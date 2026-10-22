@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MECH-MINDS 4WD Recon Rover Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans p-6">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-6 bg-slate-800 p-4 rounded-xl border border-slate-700">
+            <h1 class="text-xl font-bold tracking-wider">MECH-MINDS 4WD RECON ROVER</h1>
+            <span id="status-badge" class="px-3 py-1 text-xs font-bold rounded-full bg-red-600">CONNECTING...</span>
+        </div>
+
+        <!-- Simulation Card -->
+        <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 mb-6 shadow-lg">
+            <h2 class="text-sm font-semibold text-slate-400 mb-2">DIGITAL TWIN SIMULATION FEED</h2>
+            <p id="hazard-text" class="text-lg font-bold text-sky-400">Active Hazards Detected: 0</p>
+        </div>
+
+        <!-- Metrics Grid -->
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <span class="text-xs text-slate-400 font-semibold">V-SLAM POSE (X, Y, θ)</span>
+                <p id="pose-val" class="text-2xl font-bold mt-1 text-emerald-400">(30, 8) @ 1.57 rad</p>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <span class="text-xs text-slate-400 font-semibold">VELOCITY (LIN / ANG)</span>
+                <p id="vel-val" class="text-2xl font-bold mt-1 text-sky-400">0.0 m/s | 0.0 rad/s</p>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex gap-4">
+            <button id="mode-btn" onclick="toggleAutonomy()" class="flex-1 bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold transition">
+                MODE: AUTONOMOUS (A* + APF)
+            </button>
+            <button onclick="triggerEstop()" class="flex-1 bg-red-600 hover:bg-red-500 py-4 rounded-xl font-bold transition">
+                HARDWARE E-STOP
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let autonomous = true;
+
+        socket.on('connect', () => {
+            const badge = document.getElementById('status-badge');
+            badge.innerText = 'LINK ONLINE';
+            badge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-emerald-600';
+        });
+
+        socket.on('disconnect', () => {
+            const badge = document.getElementById('status-badge');
+            badge.innerText = 'SIGNAL LOST';
+            badge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-red-600';
+        });
+
+        socket.on('rover_telemetry_stream', (packet) => {
+            if (packet.pose) {
+                document.getElementById('pose-valinnerText') = `(${packet.pose.x}, ${packet.pose.y}) @ ${packet.pose.yaw} rad`;
+                document.getElementById('pose-val').innerText = `(${packet.pose.x}, ${packet.pose.y}) @ ${packet.pose.yaw} rad`;
+            }
+            if (packet.velocity) {
+                document.getElementById('vel-val').innerText = `${packet.velocity.linear} m/s | ${packet.velocity.angular} rad/s`;
+            }
+            if (packet.detections) {
+                document.getElementById('hazard-text').innerText = `Active Hazards Detected: ${packet.detections.length}`;
+            }
+        });
+
+        function sendCommand(type, payload) {
+            socket.emit('operator_command', { type, payload });
+        }
+
+        function toggleAutonomy() {
+            autonomous = !autonomous;
+            const btn = document.getElementById('mode-btn');
+            btn.innerText = autonomous ? "MODE: AUTONOMOUS (A* + APF)" : "MODE: MANUAL OVERRIDE";
+            btn.className = autonomous ? "flex-1 bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold transition" : "flex-1 bg-slate-600 hover:bg-slate-500 py-4 rounded-xl font-bold transition";
+            sendCommand("OVERRIDE", { autonomous_enabled: autonomous, linear_v: 0.0, angular_w: 0.0 });
+        }
+
+        function triggerEstop() {
+            autonomous = false;
+            const btn = document.getElementById('mode-btn');
+            btn.innerText = "MODE: MANUAL OVERRIDE";
+            btn.className = "flex-1 bg-slate-600 hover:bg-slate-500 py-4 rounded-xl font-bold transition";
+            sendCommand("OVERRIDE", { autonomous_enabled: false, linear_v: 0.0, angular_w: 0.0 });
+        }
+    </script>
+</body>
+</html>

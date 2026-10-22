@@ -1,0 +1,10 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+python-socketio[asyncio_client]==5.11.4
+aiohttp==3.10.5
+pybind11==2.13.5
+setuptools==74.1.2
+wheel==0.44.0
+tflite-runtime==2.14.0; platform_machine == "aarch64"

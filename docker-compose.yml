@@ -1,0 +1,40 @@
+# docker-compose.yml
+version: "3.9"
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: rover_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_edge_data:/data/db
+
+  edge_engine:
+    build: ./edge_engine
+    container_name: rover_edge_engine
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    environment:
+      - SIM_MODE=${SIM_MODE:-false}
+      - GATEWAY_URL=http://127.0.0.1:4000
+    devices:
+      - "/dev/video0:/dev/video0"
+      - "/dev/gpiomem:/dev/gpiomem"
+
+  core_gateway:
+    build: ./core_gateway
+    container_name: rover_core_gateway
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - MONGO_URI=mongodb://127.0.0.1:27017/mech_minds_rover
+      - EDGE_API_URL=http://127.0.0.1:8000
+      - PORT=4000
+    depends_on:
+      - mongodb
+
+volumes:
+  mongo_edge_data:
