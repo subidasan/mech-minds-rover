@@ -10,78 +10,115 @@
     <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
 
+    <gui fullscreen="0">
+      <plugin filename="MinimalScene" name="3D View">
+        <gz-gui>
+          <title>3D View</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">docked</property>
+        </gz-gui>
+        <engine>ogre</engine>
+        <scene>scene</scene>
+        <ambient_light>0.4 0.4 0.4</ambient_light>
+        <background_color>0.12 0.15 0.20</background_color>
+        <!-- Point 3D viewport camera directly at the rover & obstacle gauntlet at startup! -->
+        <camera_pose>0.0 -2.2 2.4 0.0 0.52 1.5708</camera_pose>
+      </plugin>
+      <plugin filename="EntityContextMenuPlugin" name="Entity context menu"/>
+      <plugin filename="GzSceneManager" name="Scene Manager"/>
+      <plugin filename="InteractiveViewControl" name="Interactive view control"/>
+      <plugin filename="CameraTracking" name="Camera Tracking"/>
+      <plugin filename="WorldControl" name="World control">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+        </gz-gui>
+        <play_pause>true</play_pause>
+        <step>true</step>
+      </plugin>
+      <plugin filename="EntityTree" name="Entity tree"/>
+    </gui>
+
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>
-      <pose>0 0 12 0 0 0</pose>
-      <diffuse>0.85 0.85 0.85 1</diffuse>
-      <specular>0.2 0.2 0.2 1</specular>
-      <direction>-0.5 0.1 -0.9</direction>
+      <pose>0 0 14 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.3 0.3 0.3 1</specular>
+      <direction>-0.4 0.2 -0.9</direction>
     </light>
 
     <model name="ground_plane">
       <static>true</static>
       <link name="link">
         <collision name="collision"><geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry></collision>
-        <visual name="visual"><geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry><material><ambient>0.22 0.24 0.28 1</ambient><diffuse>0.30 0.32 0.36 1</diffuse></material></visual>
+        <visual name="visual"><geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry><material><ambient>0.20 0.22 0.26 1</ambient><diffuse>0.28 0.30 0.35 1</diffuse></material></visual>
       </link>
     </model>
 
-    <!-- 8 Disaster-Zone Debris Obstacles (Red) -->
-    <model name="hazard_1"><static>true</static><pose>0.0 2.4 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
-    <model name="hazard_2"><static>true</static><pose>-1.4 3.6 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
-    <model name="hazard_3"><static>true</static><pose>1.4 3.8 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
-    <model name="hazard_4"><static>true</static><pose>-0.4 5.2 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
-    <model name="hazard_5"><static>true</static><pose>1.0 6.0 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
-    <model name="hazard_6"><static>true</static><pose>-1.8 6.6 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
-    <model name="hazard_7"><static>true</static><pose>0.2 7.6 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
-    <model name="hazard_8"><static>true</static><pose>-1.0 8.6 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <!-- 16 Hard-Mode Disaster Gauntlet Obstacles (Red Debris Pillars) -->
+    <!-- Row 1: Entry Choke -->
+    <model name="hazard_01"><static>true</static><pose>-0.8 1.6 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="hazard_02"><static>true</static><pose>0.0 1.8 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
 
-    <!-- 2 Flush Traversable Disaster Ramps (Sloped cleanly along Y-axis with flat center deck) -->
+    <!-- Row 2: Flank Guards around Ramp Alpha -->
+    <model name="hazard_03"><static>true</static><pose>-2.0 2.8 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="hazard_04"><static>true</static><pose>-0.4 3.0 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="hazard_05"><static>true</static><pose>2.0 2.8 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+
+    <!-- Row 3: Mid-Field Debris Wall -->
+    <model name="hazard_06"><static>true</static><pose>-1.2 4.2 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="hazard_07"><static>true</static><pose>0.6 4.4 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="hazard_08"><static>true</static><pose>1.6 4.4 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+
+    <!-- Row 4: Narrow S-Curve Canyon -->
+    <model name="hazard_09"><static>true</static><pose>-2.4 5.6 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="hazard_10"><static>true</static><pose>-0.2 5.6 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="hazard_11"><static>true</static><pose>1.0 5.8 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+
+    <!-- Row 5: Upper Gauntlet surrounding Ramp Charlie -->
+    <model name="hazard_12"><static>true</static><pose>-1.6 7.0 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="hazard_13"><static>true</static><pose>0.4 7.2 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="hazard_14"><static>true</static><pose>2.2 7.0 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+
+    <!-- Row 6: North Perimeter Final Gate -->
+    <model name="hazard_15"><static>true</static><pose>-0.6 8.4 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="hazard_16"><static>true</static><pose>0.8 8.6 0.25 0 0 0</pose><link name="l"><visual name="v"><geometry><box><size>0.42 0.42 0.5</size></box></geometry><material><ambient>0.9 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material></visual></link></model>
+
+    <!-- 3 Traversable Disaster Ramps (Gold Elevated Overpasses) -->
+    <!-- Ramp Alpha: Grid (35, 19) -> World (1.0, 2.6) -->
     <model name="ramp_alpha">
       <static>true</static>
-      <pose>0.8 2.8 0.0 0 0 0</pose>
+      <pose>1.0 2.6 0.0 0 0 0</pose>
       <link name="l">
-        <visual name="south_up_slope">
-          <pose>0 -0.42 0.09 0.28 0 0</pose>
-          <geometry><box><size>0.85 0.65 0.04</size></box></geometry>
-          <material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material>
-        </visual>
-        <visual name="center_crest">
-          <pose>0 0.0 0.18 0 0 0</pose>
-          <geometry><box><size>0.85 0.26 0.04</size></box></geometry>
-          <material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material>
-        </visual>
-        <visual name="north_down_slope">
-          <pose>0 0.42 0.09 -0.28 0 0</pose>
-          <geometry><box><size>0.85 0.65 0.04</size></box></geometry>
-          <material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material>
-        </visual>
+        <visual name="south_up"><pose>0 -0.42 0.09 0.28 0 0</pose><geometry><box><size>0.80 0.65 0.04</size></box></geometry><material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material></visual>
+        <visual name="crest"><pose>0 0.0 0.18 0 0 0</pose><geometry><box><size>0.80 0.26 0.04</size></box></geometry><material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material></visual>
+        <visual name="north_down"><pose>0 0.42 0.09 -0.28 0 0</pose><geometry><box><size>0.80 0.65 0.04</size></box></geometry><material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material></visual>
       </link>
     </model>
 
+    <!-- Ramp Bravo: Grid (20, 27) -> World (-2.0, 4.2) -->
     <model name="ramp_bravo">
+      <static>true</static>
+      <pose>-2.0 4.2 0.0 0 0 0</pose>
+      <link name="l">
+        <visual name="south_up"><pose>0 -0.42 0.09 0.28 0 0</pose><geometry><box><size>0.80 0.65 0.04</size></box></geometry><material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material></visual>
+        <visual name="crest"><pose>0 0.0 0.18 0 0 0</pose><geometry><box><size>0.80 0.26 0.04</size></box></geometry><material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material></visual>
+        <visual name="north_down"><pose>0 0.42 0.09 -0.28 0 0</pose><geometry><box><size>0.80 0.65 0.04</size></box></geometry><material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- Ramp Charlie: Grid (26, 41) -> World (-0.8, 7.0) -->
+    <model name="ramp_charlie">
       <static>true</static>
       <pose>-0.8 7.0 0.0 0 0 0</pose>
       <link name="l">
-        <visual name="south_up_slope">
-          <pose>0 -0.42 0.09 0.28 0 0</pose>
-          <geometry><box><size>0.85 0.65 0.04</size></box></geometry>
-          <material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material>
-        </visual>
-        <visual name="center_crest">
-          <pose>0 0.0 0.18 0 0 0</pose>
-          <geometry><box><size>0.85 0.26 0.04</size></box></geometry>
-          <material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material>
-        </visual>
-        <visual name="north_down_slope">
-          <pose>0 0.42 0.09 -0.28 0 0</pose>
-          <geometry><box><size>0.85 0.65 0.04</size></box></geometry>
-          <material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material>
-        </visual>
+        <visual name="south_up"><pose>0 -0.42 0.09 0.28 0 0</pose><geometry><box><size>0.80 0.65 0.04</size></box></geometry><material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material></visual>
+        <visual name="crest"><pose>0 0.0 0.18 0 0 0</pose><geometry><box><size>0.80 0.26 0.04</size></box></geometry><material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material></visual>
+        <visual name="north_down"><pose>0 0.42 0.09 -0.28 0 0</pose><geometry><box><size>0.80 0.65 0.04</size></box></geometry><material><ambient>0.95 0.65 0.05 1</ambient><diffuse>0.95 0.65 0.05 1</diffuse></material></visual>
       </link>
     </model>
 
-    <!-- Custom Autodesk Fusion CAD Rover (Gravity disabled so it NEVER sinks or bounces!) -->
+    <!-- Custom Autodesk Fusion CAD Rover + High-Visibility Telemetry Beacon -->
     <model name="mech_minds_rover">
       <pose>0 0 0.085 0 0 1.5708</pose>
       <link name="chassis">
@@ -92,11 +129,17 @@
           <pose>0 0 0 0 0 -1.5708</pose>
           <geometry>
             <mesh>
-              <uri>/mnt/c/mech-minds-rover/simulation/rover_chassis.stl</uri>
+              <uri>file:///mnt/c/mech-minds-rover/simulation/rover_chassis.stl</uri>
               <scale>0.001 0.001 0.001</scale>
             </mesh>
           </geometry>
-          <material><ambient>0.1 0.5 0.9 1</ambient><diffuse>0.1 0.5 0.9 1</diffuse></material>
+          <material><ambient>0.05 0.65 1.0 1</ambient><diffuse>0.05 0.65 1.0 1</diffuse></material>
+        </visual>
+        <!-- Glowing Cyan Lidar/Recon Dome on top of chassis so rover is always visible -->
+        <visual name="recon_beacon">
+          <pose>0 0 0.14 0 0 0</pose>
+          <geometry><cylinder><radius>0.045</radius><length>0.03</length></cylinder></geometry>
+          <material><ambient>0.0 1.0 0.8 1</ambient><diffuse>0.0 1.0 0.8 1</diffuse></material>
         </visual>
       </link>
     </model>

@@ -12,7 +12,7 @@ class VSLAMOccupancyMapper:
         self.rover_x_float = 30.0
         self.rover_y_float = 6.0
         self.rover_yaw = math.pi / 2.0
-        self.rover_z = 0.05
+        self.rover_z = 0.085
         self.rover_pitch = 0.0
 
     def get_pose_state(self):
@@ -26,11 +26,12 @@ class VSLAMOccupancyMapper:
             "pitch": round(self.rover_pitch, 3),
         }
 
-    def reset_map_and_pose(self, x=30.0, y=6.0, yaw=math.pi / 2.0):
-        self.rover_x_float = x
-        self.rover_y_float = y
-        self.rover_yaw = yaw
-        self.log_odds.fill(0.0)
+    def reset_map_and_pose(self, x=30.0, y=6.0, yaw=math.pi / 2.0, clear_map=False):
+        self.rover_x_float = float(x)
+        self.rover_y_float = float(y)
+        self.rover_yaw = float(yaw)
+        if clear_map:
+            self.log_odds.fill(0.0)
 
     def _bresenham_line(self, x0, y0, x1, y1):
         points = []
@@ -66,10 +67,8 @@ class VSLAMOccupancyMapper:
         rx = int(round(self.rover_x_float))
         ry = int(round(self.rover_y_float))
 
-        # Slight natural decay so stale false-positive reflections fade away cleanly
-        self.log_odds *= 0.985
+        self.log_odds *= 0.99
 
-        # Only map HAZARD detections (RAMP detections remain 100% traversable!)
         for det in detections:
             if det.get("type") != "HAZARD":
                 continue
@@ -79,9 +78,9 @@ class VSLAMOccupancyMapper:
             est_x = self.rover_x_float + dist_cells * math.cos(angle)
             est_y = self.rover_y_float + dist_cells * math.sin(angle)
 
-            # Snap sensed hit to nearest true physical obstacle if within sensor tolerance (prevents empty-space smearing)
             obs_x, obs_y = int(round(est_x)), int(round(est_y))
-            for wx, wy in world_obstacles:
+            for w_obs in world_obstacles:
+                wx, wy = w_obs["x"], w_obs["y"]
                 if math.hypot(est_x - wx, est_y - wy) < 3.5:
                     obs_x, obs_y = int(round(wx)), int(round(wy))
                     break
@@ -89,15 +88,15 @@ class VSLAMOccupancyMapper:
             obs_x = int(np.clip(obs_x, 1, self.grid_size - 2))
             obs_y = int(np.clip(obs_y, 1, self.grid_size - 2))
 
-            # Clear free space along the camera ray
             ray_cells = self._bresenham_line(rx, ry, obs_x, obs_y)
             for cx, cy in ray_cells[:-1]:
                 if 0 <= cx < self.grid_size and 0 <= cy < self.grid_size:
                     self.log_odds[cy, cx] = np.clip(self.log_odds[cy, cx] - 0.6, -4.0, 4.0)
 
-            # Tight 1-cell obstacle footprint so the map stays crisp and accurate
-            for ox in range(max(0, obs_x - 1), min(self.grid_size, obs_x + 2)):
-                for oy in range(max(0, obs_y - 1), min(self.grid_size, obs_y + 2)):
+            # Bio-chemical and Radiation zones get a wider safety buffer than simple physical debris
+            inflate_r = 2 if det.get("kind") in ("BIOCHEM", "RADIATION") else 1
+            for ox in range(max(0, obs_x - inflate_r), min(self.grid_size, obs_x + inflate_r + 1)):
+                for oy in range(max(0, obs_y - inflate_r), min(self.grid_size, obs_y + inflate_r + 1)):
                     self.log_odds[oy, ox] = np.clip(self.log_odds[oy, ox] + 1.8, -4.0, 4.0)
 
         prob_grid = (1.0 - (1.0 / (1.0 + np.exp(self.log_odds)))) * 100.0
@@ -108,7 +107,7 @@ class VSLAMOccupancyMapper:
 
         return {
             "pose": self.get_pose_state(),
-            "vo_confidence": 0.95,
+            "vo_confidence": 0.96,
             "binary_grid": binary_occupancy,
             "scanned_obstacles": scanned_obstacles,
         }

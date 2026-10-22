@@ -1,52 +1,71 @@
 import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ScrollView, TextInput, Image } from "react-native";
 import { Provider, useDispatch, useSelector } from "react-redux";
-import { store, setConnectionState, ingestTelemetry, setAutonomousMode, setLocalGoal } from "./store";
-import { io } from "socket.io-client";
+import { store, setConnectionState, ingestTelemetry, setAutonomousMode, setLocalGoal, setLocalHome } from "./store";
 import Svg, { Rect, Circle, Line, Polyline, G } from "react-native-svg";
-import { ResponsiveContainer, LineChart, Line as ReLine, XAxis, YAxis, Tooltip, Legend } from "recharts";
+import { ResponsiveContainer, LineChart, Line as ReLine, XAxis, YAxis, Tooltip } from "recharts";
 
-const ROVER_IP = "http://localhost:4000";
 const EDGE_DIRECT_API = "http://localhost:8000";
-const MAP_SIZE = 280;
+const MAP_SIZE = 300;
 const GRID_DIM = 60;
+
+const SCENARIOS = [
+  { id: "EARTHQUAKE_COLLAPSE", label: "Seismic Collapse" },
+  { id: "BIO_CHEMICAL_SPILL", label: "Bio-Chem Spill" },
+  { id: "NUCLEAR_MELTDOWN", label: "Radiation Zone" },
+  { id: "DYNAMIC_MIXED", label: "Multi-Hazard Mix" },
+];
 
 function RoverDashboard() {
   const dispatch = useDispatch();
   const {
-    connected, pose, active_ramp, velocity, motors, detections,
+    connected, scenario, pose, home_cell, active_ramp, drive_mode, safety_score,
+    learned_zones, learned_counts, mission_log, velocity, motors, detections,
     a_star_path, scanned_obstacles, world_obstacles, world_ramps,
     goal_cell, goal_reached, camera_frame, history, autonomous
   } = useSelector((state) => state.telemetry);
 
-  const socketRef = useRef(null);
   const mapContainerRef = useRef(null);
   const [inputX, setInputX] = useState("30");
   const [inputY, setInputY] = useState("54");
+  const [homeX, setHomeX] = useState("30");
+  const [homeY, setHomeY] = useState("6");
+  const [clickMode, setClickMode] = useState("GOAL"); // "GOAL" or "HOME"
 
   useEffect(() => {
-    const socket = io(ROVER_IP, { transports: ["websocket"] });
-    socketRef.current = socket;
+    let isMounted = true;
+    const pollTelemetry = async () => {
+      try {
+        const res = await fetch(`${EDGE_DIRECT_API}/status`);
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && data && data.pose) {
+            dispatch(ingestTelemetry(data));
+          }
+        } else if (isMounted) {
+          dispatch(setConnectionState(false));
+        }
+      } catch (err) {
+        if (isMounted) dispatch(setConnectionState(false));
+      }
+    };
 
-    socket.on("connect", () => dispatch(setConnectionState(true)));
-    socket.on("disconnect", () => dispatch(setConnectionState(false)));
-    socket.on("rover_telemetry_stream", (packet) => dispatch(ingestTelemetry(packet)));
-
-    return () => socket.disconnect();
+    const intervalId = setInterval(pollTelemetry, 90);
+    pollTelemetry();
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
   }, [dispatch]);
 
-  const sendCommand = async (type, payload) => {
+  const postAPI = async (endpoint, payload) => {
     try {
-      const endpoint = type === "SET_GOAL" ? "/goal" : "/override";
       await fetch(`${EDGE_DIRECT_API}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
     } catch (e) {}
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit("operator_command", { type, payload });
-    }
   };
 
   const applyGoalCoordinates = (gx, gy) => {
@@ -58,10 +77,27 @@ function RoverDashboard() {
     setInputY(String(clampedY));
     dispatch(setLocalGoal([clampedX, clampedY]));
     dispatch(setAutonomousMode(true));
-    sendCommand("SET_GOAL", { goal_x: clampedX, goal_y: clampedY });
+    postAPI("/goal", { goal_x: clampedX, goal_y: clampedY });
   };
 
-  // Universal Web + Native Map Click Handler
+  const applyHomeCoordinates = (hx, hy, useCurrent = false) => {
+    if (useCurrent) {
+      setHomeX(String(pose.x));
+      setHomeY(String(pose.y));
+      dispatch(setLocalHome([pose.x, pose.y]));
+      postAPI("/home", { home_x: pose.x, home_y: pose.y, use_current_pose: true });
+      return;
+    }
+    const parsedX = parseInt(String(hx).trim(), 10);
+    const parsedY = parseInt(String(hy).trim(), 10);
+    const clampedX = Math.max(2, Math.min(57, isNaN(parsedX) ? 30 : parsedX));
+    const clampedY = Math.max(2, Math.min(57, isNaN(parsedY) ? 6 : parsedY));
+    setHomeX(String(clampedX));
+    setHomeY(String(clampedY));
+    dispatch(setLocalHome([clampedX, clampedY]));
+    postAPI("/home", { home_x: clampedX, home_y: clampedY, use_current_pose: false });
+  };
+
   const handleMapClick = (evt) => {
     const nativeEvt = evt.nativeEvent || evt;
     let clickX = nativeEvt.offsetX ?? nativeEvt.locationX;
@@ -76,7 +112,12 @@ function RoverDashboard() {
     if (clickX !== undefined && clickY !== undefined) {
       const gx = Math.round((clickX / MAP_SIZE) * GRID_DIM);
       const gy = Math.round(((MAP_SIZE - clickY) / MAP_SIZE) * GRID_DIM);
-      applyGoalCoordinates(gx, gy);
+      if (clickMode === "HOME") {
+        applyHomeCoordinates(gx, gy, false);
+        setClickMode("GOAL");
+      } else {
+        applyGoalCoordinates(gx, gy);
+      }
     }
   };
 
@@ -91,39 +132,65 @@ function RoverDashboard() {
   const ry = pose.y_float || pose.y;
   const ryaw = pose.yaw || 1.57;
 
+  const getObstacleColor = (kind) => {
+    if (kind === "BIOCHEM") return "#34C759";
+    if (kind === "RADIATION") return "#AF52DE";
+    return "#FF3B30";
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.header}>
+        {/* Apple Minimalist Top Navigation Bar */}
+        <View style={styles.navBar}>
           <View>
-            <Text style={styles.title}>MECH-MINDS // DISASTER RECONNAISSANCE ROVER</Text>
-            <Text style={styles.subtitle}>TRACK 01: 40Hz V-SLAM, RAMP TRAVERSAL & DYNAMIC A* NAVIGATION</Text>
+            <Text style={styles.brandSubtitle}>MECH-MINDS AUTONOMOUS SYSTEMS</Text>
+            <Text style={styles.brandTitle}>Reconnaissance Rover OS</Text>
           </View>
-          <View style={styles.headerRight}>
-            {active_ramp && (
-              <Text style={[styles.statusBadge, { backgroundColor: "#d97706", marginRight: 8 }]}>
-                ▲ CLIMBING {active_ramp} (Z: {pose.z}m)
+
+          {/* Segmented Disaster Environment Switcher */}
+          <View style={styles.segmentedControl}>
+            {SCENARIOS.map((sc) => {
+              const active = scenario === sc.id;
+              return (
+                <TouchableOpacity
+                  key={sc.id}
+                  style={[styles.segmentBtn, active && styles.segmentBtnActive]}
+                  onPress={() => postAPI("/scenario", { scenario: sc.id })}
+                >
+                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                    {sc.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.statusRow}>
+            <View style={[styles.pillBadge, { backgroundColor: connected ? "#E8F8EE" : "#FFEBEA" }]}>
+              <View style={[styles.dot, { backgroundColor: connected ? "#34C759" : "#FF3B30" }]} />
+              <Text style={[styles.pillText, { color: connected ? "#1D7A36" : "#C92A2A" }]}>
+                {connected ? "40Hz Neural Link" : "Offline"}
               </Text>
-            )}
-            <Text style={[styles.statusBadge, { backgroundColor: connected ? "#059669" : "#dc2626" }]}>
-              {connected ? "● TELEMETRY ONLINE (40Hz)" : "● LINK OFFLINE"}
-            </Text>
-            {goal_reached && (
-              <Text style={[styles.statusBadge, { backgroundColor: "#0284c7", marginLeft: 8 }]}>
-                ★ GOAL REACHED
-              </Text>
-            )}
+            </View>
           </View>
         </View>
 
-        <View style={styles.mainGrid}>
-          {/* Left Panel: 40Hz Live Camera Feed */}
-          <View style={styles.panelCard}>
-            <View style={styles.panelHeaderRow}>
-              <Text style={styles.panelTitle}>LIVE ROVER CAMERA FEED (40Hz YOLOv8n + RAMP HUD)</Text>
-              <Text style={styles.cyanTag}>Objects in FOV: {detections.length}</Text>
+        {/* Primary Bento Row: Vision Feed + Spatial V-SLAM Map */}
+        <View style={styles.bentoGrid}>
+          {/* Left Card: Live Vision Feed & Multi-Hazard Neural Classifier */}
+          <View style={styles.bentoCard}>
+            <View style={styles.cardHeader}>
+              <View>
+                <Text style={styles.cardEyebrow}>OPTICAL PERCEPTION</Text>
+                <Text style={styles.cardTitle}>Multi-Hazard Vision Feed</Text>
+              </View>
+              <View style={styles.subtleChip}>
+                <Text style={styles.subtleChipText}>{drive_mode}</Text>
+              </View>
             </View>
-            <View style={styles.cameraBox}>
+
+            <View style={styles.cameraContainer}>
               {camera_frame ? (
                 <Image
                   source={{ uri: `data:image/jpeg;base64,${camera_frame}` }}
@@ -131,42 +198,80 @@ function RoverDashboard() {
                   resizeMode="stretch"
                 />
               ) : (
-                <View style={styles.cameraPlaceholder}>
-                  <Text style={styles.placeholderText}>Initializing 40Hz Vision Stream...</Text>
+                <View style={styles.cameraEmpty}>
+                  <Text style={styles.emptyText}>Awaiting Optical Stream...</Text>
                 </View>
               )}
             </View>
-            <View style={styles.detectionBar}>
-              <Text style={styles.detText}>
-                Nearest Scanned Object:{" "}
-                {detections[0]
-                  ? `${detections[0].label} at ${detections[0].distance_m}m (${(detections[0].bearing_rad * 57.3).toFixed(0)}°)`
-                  : "Path Clear in Camera FOV"}
-              </Text>
+
+            {/* Dynamic Unmapped Anomaly Spawner (Proves Real-Time Learning in Any Disaster) */}
+            <View style={styles.anomalyBar}>
+              <Text style={styles.microLabel}>INJECT UNMAPPED ANOMALY AHEAD:</Text>
+              <View style={styles.anomalyBtnGroup}>
+                <TouchableOpacity
+                  style={[styles.anomalyChip, { borderColor: "#FF3B30" }]}
+                  onPress={() => postAPI("/scenario", { spawn_anomaly_kind: "DEBRIS" })}
+                >
+                  <Text style={[styles.anomalyChipText, { color: "#FF3B30" }]}>+ Seismic Debris</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.anomalyChip, { borderColor: "#34C759" }]}
+                  onPress={() => postAPI("/scenario", { spawn_anomaly_kind: "BIOCHEM" })}
+                >
+                  <Text style={[styles.anomalyChipText, { color: "#248A3D" }]}>+ Bio-Chem Plume</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.anomalyChip, { borderColor: "#AF52DE" }]}
+                  onPress={() => postAPI("/scenario", { spawn_anomaly_kind: "RADIATION" })}
+                >
+                  <Text style={[styles.anomalyChipText, { color: "#8944AB" }]}>+ Radiation Pocket</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
-          {/* Right Panel: Interactive One-Click 2D Radar Map */}
-          <View style={styles.panelCard}>
-            <View style={styles.panelHeaderRow}>
-              <Text style={styles.panelTitle}>2D V-SLAM SENSOR MAP & A* TRAJECTORY</Text>
-              <Text style={styles.emeraldTag}>Click Any Spot on Map to Set Goal</Text>
+          {/* Right Card: Interactive Spatial Map (One-Click Goal & Home Base) */}
+          <View style={styles.bentoCard}>
+            <View style={styles.cardHeader}>
+              <View>
+                <Text style={styles.cardEyebrow}>SPATIAL TOPOLOGY & A* ROUTING</Text>
+                <Text style={styles.cardTitle}>Lifelong V-SLAM Map</Text>
+              </View>
+              <View style={styles.mapModeToggle}>
+                <TouchableOpacity
+                  style={[styles.modePill, clickMode === "GOAL" && styles.modePillActive]}
+                  onPress={() => setClickMode("GOAL")}
+                >
+                  <Text style={[styles.modePillText, clickMode === "GOAL" && styles.modePillTextActive]}>
+                    Click sets Goal
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modePill, clickMode === "HOME" && styles.modePillActiveHome]}
+                  onPress={() => setClickMode("HOME")}
+                >
+                  <Text style={[styles.modePillText, clickMode === "HOME" && styles.modePillTextActive]}>
+                    Click sets Home
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.mapWrapper}>
+
+            <View style={styles.mapCanvasContainer}>
               <div
                 ref={mapContainerRef}
                 onClick={handleMapClick}
                 style={{ width: MAP_SIZE, height: MAP_SIZE, cursor: "crosshair", position: "relative" }}
               >
-                <Svg width={MAP_SIZE} height={MAP_SIZE} style={styles.svgCanvas}>
+                <Svg width={MAP_SIZE} height={MAP_SIZE} style={styles.svgMap}>
                   {[10, 20, 30, 40, 50].map((g) => (
                     <G key={g}>
-                      <Line x1={toCanvasX(g)} y1={0} x2={toCanvasX(g)} y2={MAP_SIZE} stroke="#1e293b" strokeWidth="1" />
-                      <Line x1={0} y1={toCanvasY(g)} x2={MAP_SIZE} y2={toCanvasY(g)} stroke="#1e293b" strokeWidth="1" />
+                      <Line x1={toCanvasX(g)} y1={0} x2={toCanvasX(g)} y2={MAP_SIZE} stroke="#E5E5EA" strokeWidth="1" />
+                      <Line x1={0} y1={toCanvasY(g)} x2={MAP_SIZE} y2={toCanvasY(g)} stroke="#E5E5EA" strokeWidth="1" />
                     </G>
                   ))}
 
-                  {/* Traversable Disaster Ramps (Amber Rectangles) */}
+                  {/* Traversable Overpass Ramps (Warm Amber) */}
                   {(world_ramps || []).map((r, i) => (
                     <Rect
                       key={`ramp-${i}`}
@@ -174,191 +279,243 @@ function RoverDashboard() {
                       y={toCanvasY(r.y + r.l / 2)}
                       width={(r.w / GRID_DIM) * MAP_SIZE}
                       height={(r.l / GRID_DIM) * MAP_SIZE}
-                      fill="#f59e0b"
-                      opacity={0.45}
-                      stroke="#fbbf24"
+                      fill="#FF9500"
+                      opacity={0.32}
+                      stroke="#FF9500"
+                      strokeWidth="1.5"
+                      rx="3"
+                    />
+                  ))}
+
+                  {/* Multi-Disaster Arena Obstacles (Color-coded by class) */}
+                  {(world_obstacles || []).map((obs, i) => (
+                    <Circle
+                      key={`w-${i}`}
+                      cx={toCanvasX(obs.x)}
+                      cy={toCanvasY(obs.y)}
+                      r={5.5}
+                      fill={getObstacleColor(obs.kind)}
+                      opacity={0.28}
+                    />
+                  ))}
+
+                  {/* AI Learned Multi-Hazard Memory Perimeters */}
+                  {(learned_zones || []).map((lz, idx) => (
+                    <Circle
+                      key={`lz-${idx}`}
+                      cx={toCanvasX(lz.x)}
+                      cy={toCanvasY(lz.y)}
+                      r={10}
+                      fill={getObstacleColor(lz.kind)}
+                      opacity={0.22}
+                      stroke={getObstacleColor(lz.kind)}
                       strokeWidth="1.5"
                     />
                   ))}
 
-                  {/* Untraversable Debris Outlines (Faint Gray) */}
-                  {(world_obstacles || []).map((obs, i) => (
-                    <Rect
-                      key={`w-${i}`}
-                      x={toCanvasX(obs[0]) - 6}
-                      y={toCanvasY(obs[1]) - 6}
-                      width={12}
-                      height={12}
-                      fill="none"
-                      stroke="#475569"
-                      strokeDasharray="2,2"
-                    />
-                  ))}
-
-                  {/* Clean Sensed Obstacle Cells (Red) */}
+                  {/* Actively Scanned Costmap Cells */}
                   {(scanned_obstacles || []).map((cell, idx) => (
                     <Rect
                       key={`s-${idx}`}
-                      x={toCanvasX(cell[0]) - 3.5}
-                      y={toCanvasY(cell[1]) - 3.5}
-                      width={7}
-                      height={7}
-                      fill="#ef4444"
-                      opacity={0.9}
+                      x={toCanvasX(cell[0]) - 2.5}
+                      y={toCanvasY(cell[1]) - 2.5}
+                      width={5}
+                      height={5}
+                      fill="#1D1D1F"
+                      opacity={0.75}
+                      rx="1"
                     />
                   ))}
 
-                  {/* Exact A* Path Line */}
+                  {/* Global A* Route Line (Apple System Blue) */}
                   {pathPointsString.length > 0 && (
                     <Polyline
                       points={pathPointsString}
                       fill="none"
-                      stroke="#38bdf8"
+                      stroke="#0071E3"
                       strokeWidth="3.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                   )}
 
-                  {/* Target Goal Beacon */}
-                  <Circle cx={toCanvasX(goal_cell[0])} cy={toCanvasY(goal_cell[1])} r={9} fill="#10b981" opacity={0.3} />
-                  <Circle cx={toCanvasX(goal_cell[0])} cy={toCanvasY(goal_cell[1])} r={4.5} fill="#10b981" stroke="#fff" strokeWidth="1.5" />
+                  {/* Home Base Marker (Indigo Ring) */}
+                  <Circle
+                    cx={toCanvasX(home_cell[0])}
+                    cy={toCanvasY(home_cell[1])}
+                    r={7}
+                    fill="#5856D6"
+                    stroke="#FFFFFF"
+                    strokeWidth="2"
+                  />
 
-                  {/* Rover Position & Heading Vector */}
+                  {/* Goal Beacon (Apple Emerald Green) */}
+                  <Circle cx={toCanvasX(goal_cell[0])} cy={toCanvasY(goal_cell[1])} r={10} fill="#34C759" opacity={0.25} />
+                  <Circle cx={toCanvasX(goal_cell[0])} cy={toCanvasY(goal_cell[1])} r={5.5} fill="#34C759" stroke="#FFFFFF" strokeWidth="2" />
+
+                  {/* Rover Position & Heading Indicator */}
                   <Line
                     x1={toCanvasX(rx)}
                     y1={toCanvasY(ry)}
-                    x2={toCanvasX(rx + 4.5 * Math.cos(ryaw))}
-                    y2={toCanvasY(ry + 4.5 * Math.sin(ryaw))}
-                    stroke="#facc15"
+                    x2={toCanvasX(rx + 4.8 * Math.cos(ryaw))}
+                    y2={toCanvasY(ry + 4.8 * Math.sin(ryaw))}
+                    stroke="#0071E3"
                     strokeWidth="2.5"
                   />
-                  <Circle cx={toCanvasX(rx)} cy={toCanvasY(ry)} r={6} fill="#3b82f6" stroke="#f8fafc" strokeWidth="2" />
+                  <Circle cx={toCanvasX(rx)} cy={toCanvasY(ry)} r={6.5} fill="#0071E3" stroke="#FFFFFF" strokeWidth="2.5" />
                 </Svg>
               </div>
             </View>
-            <View style={styles.mapLegendRow}>
-              <Text style={styles.legendItem}>🔵 Rover ({pose.x},{pose.y})</Text>
-              <Text style={styles.legendItem}>🟢 Goal ({goal_cell[0]},{goal_cell[1]})</Text>
-              <Text style={styles.legendItem}>🟧 Climbable Ramp</Text>
-              <Text style={styles.legendItem}>🟥 Sensed Debris</Text>
+
+            <View style={styles.legendStrip}>
+              <Text style={styles.legendText}>🔵 Rover ({pose.x},{pose.y})</Text>
+              <Text style={styles.legendText}>🟣 Home ({home_cell[0]},{home_cell[1]})</Text>
+              <Text style={styles.legendText}>🟢 Goal ({goal_cell[0]},{goal_cell[1]})</Text>
+              <Text style={styles.legendText}>🔴 Debris ({learned_counts.DEBRIS || 0})</Text>
+              <Text style={styles.legendText}>🟢 Bio-Chem ({learned_counts.BIOCHEM || 0})</Text>
+              <Text style={styles.legendText}>🟣 Rad ({learned_counts.RADIATION || 0})</Text>
             </View>
           </View>
         </View>
 
-        {/* Manual X, Y Coordinate Box + Ramp & Sector Presets */}
-        <View style={styles.goalControlCard}>
-          <Text style={styles.panelTitle}>MANUAL GOAL COORDINATES (X: 2..57, Y: 2..57) OR ONE-CLICK PRESETS</Text>
-          <View style={styles.goalInputRow}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>GOAL X:</Text>
-              <TextInput
-                style={styles.coordInput}
-                value={inputX}
-                onChangeText={(txt) => setInputX(txt)}
-                onSubmitEditing={() => applyGoalCoordinates(inputX, inputY)}
-                keyboardType="numeric"
-              />
+        {/* Home Base & Target Waypoint Control Strip */}
+        <View style={styles.bentoCardFull}>
+          <View style={styles.dualControlRow}>
+            {/* Goal Controls */}
+            <View style={styles.controlBlock}>
+              <Text style={styles.cardEyebrow}>TARGET DESTINATION</Text>
+              <View style={styles.inlineInputs}>
+                <TextInput style={styles.appleInput} value={inputX} onChangeText={setInputX} placeholder="X" />
+                <TextInput style={styles.appleInput} value={inputY} onChangeText={setInputY} placeholder="Y" />
+                <TouchableOpacity style={styles.primaryAppleBtn} onPress={() => applyGoalCoordinates(inputX, inputY)}>
+                  <Text style={styles.primaryAppleBtnText}>Route to Goal</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.secondaryAppleBtn} onPress={() => applyGoalCoordinates(home_cell[0], home_cell[1])}>
+                  <Text style={styles.secondaryAppleBtnText}>Return to Home</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>GOAL Y:</Text>
-              <TextInput
-                style={styles.coordInput}
-                value={inputY}
-                onChangeText={(txt) => setInputY(txt)}
-                onSubmitEditing={() => applyGoalCoordinates(inputX, inputY)}
-                keyboardType="numeric"
-              />
+
+            {/* Home Base Configuration */}
+            <View style={styles.controlBlock}>
+              <Text style={styles.cardEyebrow}>HOME BASE STATION ({home_cell[0]}, {home_cell[1]})</Text>
+              <View style={styles.inlineInputs}>
+                <TextInput style={styles.appleInput} value={homeX} onChangeText={setHomeX} placeholder="HX" />
+                <TextInput style={styles.appleInput} value={homeY} onChangeText={setHomeY} placeholder="HY" />
+                <TouchableOpacity style={styles.secondaryAppleBtn} onPress={() => applyHomeCoordinates(homeX, homeY, false)}>
+                  <Text style={styles.secondaryAppleBtnText}>Set Home</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.secondaryAppleBtn} onPress={() => applyHomeCoordinates(0, 0, true)}>
+                  <Text style={styles.secondaryAppleBtnText}>Use Current Pose</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.indigoAppleBtn}
+                  onPress={() => postAPI("/override", { autonomous_enabled: true, linear_v: 0, angular_w: 0, reset_sim: true })}
+                >
+                  <Text style={styles.primaryAppleBtnText}>Deploy from Home</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <TouchableOpacity
-              style={styles.deployGoalBtn}
-              onPress={() => applyGoalCoordinates(inputX, inputY)}
-            >
-              <Text style={styles.deployGoalText}>SET GOAL & COMPUTE A*</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.resetSimBtn}
-              onPress={() => sendCommand("OVERRIDE", { autonomous_enabled: true, linear_v: 0, angular_w: 0, reset_sim: true })}
-            >
-              <Text style={styles.deployGoalText}>RESET ROVER TO BASE</Text>
-            </TouchableOpacity>
           </View>
 
-          <View style={styles.presetRow}>
-            <TouchableOpacity style={styles.presetChip} onPress={() => applyGoalCoordinates(34, 25)}>
-              <Text style={styles.presetText}>Climb Ramp Alpha (34, 25)</Text>
+          {/* Quick Disaster Sector Presets */}
+          <View style={styles.presetPillRow}>
+            <TouchableOpacity style={styles.sectorPill} onPress={() => applyGoalCoordinates(35, 23)}>
+              <Text style={styles.sectorPillText}>↗ Traverse Ramp Alpha (35, 23)</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.presetChip} onPress={() => applyGoalCoordinates(26, 46)}>
-              <Text style={styles.presetText}>Climb Ramp Bravo (26, 46)</Text>
+            <TouchableOpacity style={styles.sectorPill} onPress={() => applyGoalCoordinates(20, 31)}>
+              <Text style={styles.sectorPillText}>↖ Traverse Ramp Bravo (20, 31)</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.presetChip} onPress={() => applyGoalCoordinates(30, 55)}>
-              <Text style={styles.presetText}>North Disaster Zone (30, 55)</Text>
+            <TouchableOpacity style={styles.sectorPill} onPress={() => applyGoalCoordinates(26, 45)}>
+              <Text style={styles.sectorPillText}>↑ Traverse Ramp Charlie (26, 45)</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.presetChip} onPress={() => applyGoalCoordinates(30, 6)}>
-              <Text style={styles.presetText}>Return to Base (30, 6)</Text>
+            <TouchableOpacity style={styles.sectorPill} onPress={() => applyGoalCoordinates(30, 55)}>
+              <Text style={styles.sectorPillText}>★ Forward Recon Zone (30, 55)</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.metricsRow}>
-          <View style={styles.metricBox}>
-            <Text style={styles.metricLabel}>3D POSE (X, Y, Z-ELEV)</Text>
-            <Text style={styles.metricVal}>
-              ({pose.x_float ?? pose.x}, {pose.y_float ?? pose.y}, {pose.z ?? 0.05}m)
+        {/* 4 Apple Minimalist KPI Metric Cards */}
+        <View style={styles.kpiRow}>
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiLabel}>SPATIAL COORDINATES</Text>
+            <Text style={styles.kpiValue}>
+              {pose.x_float ?? pose.x}, {pose.y_float ?? pose.y}
             </Text>
+            <Text style={styles.kpiSub}>Elevation {pose.z ?? 0.085}m</Text>
           </View>
-          <View style={styles.metricBox}>
-            <Text style={styles.metricLabel}>CHASSIS PITCH / YAW</Text>
-            <Text style={styles.metricVal}>
-              Pitch: {((pose.pitch || 0) * 57.3).toFixed(1)}° | Yaw: {((pose.yaw || 0) * 57.3).toFixed(0)}°
-            </Text>
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiLabel}>ATTITUDE & HEADING</Text>
+            <Text style={styles.kpiValue}>{((pose.yaw || 0) * 57.3).toFixed(0)}° Yaw</Text>
+            <Text style={styles.kpiSub}>Slope Pitch {((pose.pitch || 0) * 57.3).toFixed(1)}°</Text>
           </View>
-          <View style={styles.metricBox}>
-            <Text style={styles.metricLabel}>L298N MOTOR PWM (L / R)</Text>
-            <Text style={styles.metricVal}>
-              L: {Number(motors?.pwm_l || 0).toFixed(1)} | R: {Number(motors?.pwm_r || 0).toFixed(1)}
-            </Text>
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiLabel}>AI ADAPTATION INDEX</Text>
+            <Text style={[styles.kpiValue, { color: "#0071E3" }]}>{safety_score}%</Text>
+            <Text style={styles.kpiSub}>{learned_zones.length} Hazards Learned</Text>
+          </View>
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiLabel}>ACTUATION TELEMETRY</Text>
+            <Text style={styles.kpiValue}>{velocity.linear} m/s</Text>
+            <Text style={styles.kpiSub}>PWM L:{Number(motors?.pwm_l || 0).toFixed(0)} R:{Number(motors?.pwm_r || 0).toFixed(0)}</Text>
           </View>
         </View>
 
-        <View style={styles.goalControlCard}>
-          <Text style={styles.panelTitle}>REAL-TIME C++17 PID MOTOR ACTUATION TELEMETRY</Text>
-          <View style={{ width: "100%", height: 140, marginTop: 6 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={history}>
-                <XAxis dataKey="time" stroke="#64748b" />
-                <YAxis stroke="#64748b" />
-                <Tooltip contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155" }} />
-                <Legend />
-                <ReLine type="monotone" dataKey="pwmL" name="Left Motor PWM" stroke="#38bdf8" strokeWidth={2} dot={false} isAnimationActive={false} />
-                <ReLine type="monotone" dataKey="pwmR" name="Right Motor PWM" stroke="#f43f5e" strokeWidth={2} dot={false} isAnimationActive={false} />
-              </LineChart>
-            </ResponsiveContainer>
+        {/* Bottom Bento Row: Motor Actuation Curve + Neural Reconnaissance Feed */}
+        <View style={styles.bentoGrid}>
+          <View style={styles.bentoCard}>
+            <Text style={styles.cardEyebrow}>CLOSED-LOOP C++17 PID CONTROLLER</Text>
+            <Text style={styles.cardTitle}>4WD Motor PWM Actuation</Text>
+            <View style={{ width: "100%", height: 145, marginTop: 10 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={history}>
+                  <XAxis dataKey="time" stroke="#86868B" fontSize={10} />
+                  <YAxis domain={[0, 255]} stroke="#86868B" fontSize={10} />
+                  <Tooltip contentStyle={{ backgroundColor: "#FFFFFF", borderColor: "#E5E5EA", borderRadius: 10 }} />
+                  <ReLine type="monotone" dataKey="pwmL" name="Left Bank" stroke="#0071E3" strokeWidth={2.2} dot={false} isAnimationActive={false} />
+                  <ReLine type="monotone" dataKey="pwmR" name="Right Bank" stroke="#FF2D55" strokeWidth={2.2} dot={false} isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </View>
+          </View>
+
+          <View style={styles.bentoCard}>
+            <Text style={styles.cardEyebrow}>AUTONOMOUS BLACK-BOX TELEMETRY</Text>
+            <Text style={styles.cardTitle}>Lifelong Learning & Recon Log</Text>
+            <View style={styles.cleanLogContainer}>
+              {(mission_log || []).map((item, idx) => (
+                <View key={idx} style={styles.logRow}>
+                  <Text style={styles.cleanLogTime}>{item.time}</Text>
+                  <Text style={styles.cleanLogEvent}>{item.event}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         </View>
 
-        <View style={styles.controlsRow}>
+        {/* Footer Hardware Override Dock */}
+        <View style={styles.footerDock}>
           <TouchableOpacity
-            style={[styles.btn, { backgroundColor: autonomous ? "#2563eb" : "#475569" }]}
+            style={[styles.dockBtn, { backgroundColor: autonomous ? "#0071E3" : "#86868B" }]}
             onPress={() => {
               const next = !autonomous;
               dispatch(setAutonomousMode(next));
-              sendCommand("OVERRIDE", { autonomous_enabled: next, linear_v: 0, angular_w: 0 });
+              postAPI("/override", { autonomous_enabled: next, linear_v: 0, angular_w: 0 });
             }}
           >
-            <Text style={styles.btnText}>
-              {autonomous ? "● AUTONOMOUS NAVIGATION ENGAGED (A* + APF)" : "● MANUAL STANDBY MODE"}
+            <Text style={styles.dockBtnText}>
+              {autonomous ? "Autonomous Navigation Active (A* + APF)" : "Manual Standby Mode"}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.btn, styles.estopBtn]}
+            style={[styles.dockBtn, { backgroundColor: "#FF3B30" }]}
             onPress={() => {
               dispatch(setAutonomousMode(false));
-              sendCommand("OVERRIDE", { autonomous_enabled: false, linear_v: 0, angular_w: 0 });
+              postAPI("/override", { autonomous_enabled: false, linear_v: 0, angular_w: 0 });
             }}
           >
-            <Text style={styles.btnText}>■ HARDWARE EMERGENCY STOP</Text>
+            <Text style={styles.dockBtnText}>Emergency Hardware Stop</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -375,66 +532,112 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#060b16" },
-  scroll: { padding: 16, maxWidth: 1200, alignSelf: "center", width: "100%" },
-  header: {
+  container: { flex: 1, backgroundColor: "#F5F5F7" },
+  scroll: { padding: 20, maxWidth: 1260, alignSelf: "center", width: "100%" },
+  navBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#0f172a",
-    padding: 14,
-    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 18,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#1e293b",
-    marginBottom: 14,
+    borderColor: "#E5E5EA",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 12,
   },
-  title: { color: "#f8fafc", fontSize: 18, fontWeight: "800", letterSpacing: 0.8 },
-  subtitle: { color: "#38bdf8", fontSize: 11, fontWeight: "600", marginTop: 2 },
-  headerRight: { flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
-  statusBadge: { color: "#fff", fontSize: 11, fontWeight: "700", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  mainGrid: { flexDirection: "row", flexWrap: "wrap", gap: 14, marginBottom: 14 },
-  panelCard: {
-    flex: 1,
-    minWidth: 320,
-    backgroundColor: "#0f172a",
-    padding: 14,
+  brandSubtitle: { color: "#86868B", fontSize: 10, fontWeight: "700", letterSpacing: 1.1 },
+  brandTitle: { color: "#1D1D1F", fontSize: 20, fontWeight: "800", letterSpacing: -0.4 },
+  segmentedControl: {
+    flexDirection: "row",
+    backgroundColor: "#F2F2F7",
+    padding: 4,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#1e293b",
+    flexWrap: "wrap",
   },
-  panelHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
-  panelTitle: { color: "#94a3b8", fontSize: 12, fontWeight: "700", letterSpacing: 0.5 },
-  cyanTag: { color: "#38bdf8", fontSize: 11, fontWeight: "700", backgroundColor: "#0c4a6e", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  emeraldTag: { color: "#34d399", fontSize: 11, fontWeight: "700", backgroundColor: "#064e3b", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  cameraBox: { height: 260, backgroundColor: "#020617", borderRadius: 8, overflow: "hidden", borderWidth: 1, borderColor: "#1e293b" },
+  segmentBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9 },
+  segmentBtnActive: { backgroundColor: "#FFFFFF", shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4 },
+  segmentText: { color: "#6E6E73", fontSize: 12, fontWeight: "600" },
+  segmentTextActive: { color: "#1D1D1F", fontWeight: "700" },
+  statusRow: { flexDirection: "row", alignItems: "center" },
+  pillBadge: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  dot: { width: 7, height: 7, borderRadius: 4, marginRight: 6 },
+  pillText: { fontSize: 12, fontWeight: "700" },
+  bentoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16, marginBottom: 16 },
+  bentoCard: {
+    flex: 1,
+    minWidth: 340,
+    backgroundColor: "#FFFFFF",
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E5E5EA",
+  },
+  bentoCardFull: {
+    backgroundColor: "#FFFFFF",
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E5E5EA",
+    marginBottom: 16,
+  },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
+  cardEyebrow: { color: "#86868B", fontSize: 10, fontWeight: "700", letterSpacing: 0.9 },
+  cardTitle: { color: "#1D1D1F", fontSize: 17, fontWeight: "700", marginTop: 2 },
+  subtleChip: { backgroundColor: "#F2F2F7", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
+  subtleChipText: { color: "#0071E3", fontSize: 11, fontWeight: "700" },
+  cameraContainer: { height: 265, backgroundColor: "#1D1D1F", borderRadius: 14, overflow: "hidden" },
   cameraImage: { width: "100%", height: "100%" },
-  cameraPlaceholder: { flex: 1, justifyContent: "center", alignItems: "center" },
-  placeholderText: { color: "#64748b", fontSize: 13 },
-  detectionBar: { marginTop: 10, backgroundColor: "#1e293b", padding: 8, borderRadius: 6 },
-  detText: { color: "#38bdf8", fontSize: 12, fontWeight: "600", textAlign: "center" },
-  mapWrapper: { alignItems: "center", justifyContent: "center", backgroundColor: "#020617", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#1e293b" },
-  svgCanvas: { backgroundColor: "#090f1f", borderRadius: 6 },
-  mapLegendRow: { flexDirection: "row", justifyContent: "space-around", marginTop: 10, flexWrap: "wrap" },
-  legendItem: { color: "#cbd5e1", fontSize: 11, fontWeight: "600" },
-  goalControlCard: { backgroundColor: "#0f172a", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#1e293b", marginBottom: 14 },
-  goalInputRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" },
-  inputGroup: { flexDirection: "row", alignItems: "center", backgroundColor: "#1e293b", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  inputLabel: { color: "#94a3b8", fontSize: 12, fontWeight: "700", marginRight: 6 },
-  coordInput: { color: "#f8fafc", fontSize: 14, fontWeight: "700", width: 50, textAlign: "center", backgroundColor: "#0f172a", paddingVertical: 4, borderRadius: 4 },
-  deployGoalBtn: { backgroundColor: "#059669", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-  resetSimBtn: { backgroundColor: "#475569", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 },
-  deployGoalText: { color: "#fff", fontSize: 12, fontWeight: "700" },
-  presetRow: { flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" },
-  presetChip: { flex: 1, minWidth: 140, backgroundColor: "#1e293b", paddingVertical: 8, paddingHorizontal: 10, borderRadius: 6, alignItems: "center", borderWidth: 1, borderColor: "#334155" },
-  presetText: { color: "#fbbf24", fontSize: 11, fontWeight: "700" },
-  metricsRow: { flexDirection: "row", gap: 10, marginBottom: 14, flexWrap: "wrap" },
-  metricBox: { flex: 1, minWidth: 180, backgroundColor: "#0f172a", padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#1e293b" },
-  metricLabel: { color: "#64748b", fontSize: 11, fontWeight: "700" },
-  metricVal: { color: "#f8fafc", fontSize: 15, fontWeight: "800", marginTop: 4 },
-  controlsRow: { flexDirection: "row", gap: 12 },
-  btn: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: "center" },
-  estopBtn: { backgroundColor: "#dc2626" },
-  btnText: { color: "#ffffff", fontWeight: "800", fontSize: 13 },
+  cameraEmpty: { flex: 1, justifyContent: "center", alignItems: "center" },
+  emptyText: { color: "#86868B", fontSize: 13 },
+  anomalyBar: { marginTop: 12 },
+  microLabel: { color: "#86868B", fontSize: 10, fontWeight: "700", marginBottom: 6 },
+  anomalyBtnGroup: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  anomalyChip: { flex: 1, minWidth: 110, paddingVertical: 7, paddingHorizontal: 8, borderRadius: 10, borderWidth: 1.2, alignItems: "center", backgroundColor: "#FAFAFC" },
+  anomalyChipText: { fontSize: 11, fontWeight: "700" },
+  mapModeToggle: { flexDirection: "row", backgroundColor: "#F2F2F7", padding: 3, borderRadius: 10 },
+  modePill: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 },
+  modePillActive: { backgroundColor: "#0071E3" },
+  modePillActiveHome: { backgroundColor: "#5856D6" },
+  modePillText: { color: "#6E6E73", fontSize: 11, fontWeight: "600" },
+  modePillTextActive: { color: "#FFFFFF", fontWeight: "700" },
+  mapCanvasContainer: { alignItems: "center", justifyContent: "center", backgroundColor: "#FAFAFC", padding: 8, borderRadius: 14, borderWidth: 1, borderColor: "#E5E5EA" },
+  svgMap: { backgroundColor: "#FFFFFF", borderRadius: 10 },
+  legendStrip: { flexDirection: "row", justifyContent: "space-around", marginTop: 10, flexWrap: "wrap", gap: 6 },
+  legendText: { color: "#515154", fontSize: 11, fontWeight: "600" },
+  dualControlRow: { flexDirection: "row", flexWrap: "wrap", gap: 20, justifyContent: "space-between" },
+  controlBlock: { flex: 1, minWidth: 300 },
+  inlineInputs: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" },
+  appleInput: {
+    width: 52,
+    backgroundColor: "#F2F2F7",
+    color: "#1D1D1F",
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center",
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  primaryAppleBtn: { backgroundColor: "#0071E3", paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  indigoAppleBtn: { backgroundColor: "#5856D6", paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  primaryAppleBtnText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  secondaryAppleBtn: { backgroundColor: "#F2F2F7", paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10 },
+  secondaryAppleBtnText: { color: "#1D1D1F", fontSize: 12, fontWeight: "600" },
+  presetPillRow: { flexDirection: "row", gap: 8, marginTop: 14, flexWrap: "wrap" },
+  sectorPill: { flex: 1, minWidth: 150, backgroundColor: "#F5F5F7", paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, alignItems: "center" },
+  sectorPillText: { color: "#0071E3", fontSize: 12, fontWeight: "600" },
+  kpiRow: { flexDirection: "row", gap: 14, marginBottom: 16, flexWrap: "wrap" },
+  kpiCard: { flex: 1, minWidth: 180, backgroundColor: "#FFFFFF", padding: 16, borderRadius: 18, borderWidth: 1, borderColor: "#E5E5EA" },
+  kpiLabel: { color: "#86868B", fontSize: 10, fontWeight: "700", letterSpacing: 0.8 },
+  kpiValue: { color: "#1D1D1F", fontSize: 22, fontWeight: "800", marginTop: 4 },
+  kpiSub: { color: "#6E6E73", fontSize: 12, fontWeight: "500", marginTop: 2 },
+  cleanLogContainer: { height: 145, backgroundColor: "#F5F5F7", borderRadius: 12, padding: 10, marginTop: 10, overflow: "hidden" },
+  logRow: { flexDirection: "row", marginBottom: 6 },
+  cleanLogTime: { color: "#0071E3", fontSize: 11, fontWeight: "700", width: 62 },
+  cleanLogEvent: { color: "#1D1D1F", fontSize: 11, fontWeight: "500", flex: 1 },
+  footerDock: { flexDirection: "row", gap: 12, marginTop: 4 },
+  dockBtn: { flex: 1, paddingVertical: 15, borderRadius: 14, alignItems: "center" },
+  dockBtnText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
 });
