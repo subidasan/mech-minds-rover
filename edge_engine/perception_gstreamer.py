@@ -227,7 +227,7 @@ class EdgePerceptionEngine:
                     (max(4, x), max(16, y - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 200, 255), 1, cv2.LINE_AA
                 )
 
-        # Clean Apple-style HUD Reticle
+        # Clean Crosshair HUD Reticle
         cv2.line(annotated, (self.width // 2 - 10, horizon), (self.width // 2 + 10, horizon), (235, 240, 245), 1)
         cv2.line(annotated, (self.width // 2, horizon - 8), (self.width // 2, horizon + 8), (235, 240, 245), 1)
         hud_top = f"{self.current_scenario} | POSE ({rx:.1f}, {ry:.1f}) Z:{z_elev:.2f}m"

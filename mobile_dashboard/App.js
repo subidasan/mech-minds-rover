@@ -141,7 +141,7 @@ function RoverDashboard() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Apple Minimalist Top Navigation Bar */}
+        {/* MECH-MINDS UI Top Navigation Bar */}
         <View style={styles.navBar}>
           <View>
             <Text style={styles.brandSubtitle}>MECH-MINDS AUTONOMOUS SYSTEMS</Text>
@@ -327,7 +327,7 @@ function RoverDashboard() {
                     />
                   ))}
 
-                  {/* Global A* Route Line (Apple System Blue) */}
+                  {/* Global A* Route Line (Route Highlight Blue) */}
                   {pathPointsString.length > 0 && (
                     <Polyline
                       points={pathPointsString}
@@ -349,7 +349,7 @@ function RoverDashboard() {
                     strokeWidth="2"
                   />
 
-                  {/* Goal Beacon (Apple Emerald Green) */}
+                  {/* Goal Beacon (Target Beacon Green) */}
                   <Circle cx={toCanvasX(goal_cell[0])} cy={toCanvasY(goal_cell[1])} r={10} fill="#34C759" opacity={0.25} />
                   <Circle cx={toCanvasX(goal_cell[0])} cy={toCanvasY(goal_cell[1])} r={5.5} fill="#34C759" stroke="#FFFFFF" strokeWidth="2" />
 
@@ -385,13 +385,13 @@ function RoverDashboard() {
             <View style={styles.controlBlock}>
               <Text style={styles.cardEyebrow}>TARGET DESTINATION</Text>
               <View style={styles.inlineInputs}>
-                <TextInput style={styles.appleInput} value={inputX} onChangeText={setInputX} placeholder="X" />
-                <TextInput style={styles.appleInput} value={inputY} onChangeText={setInputY} placeholder="Y" />
-                <TouchableOpacity style={styles.primaryAppleBtn} onPress={() => applyGoalCoordinates(inputX, inputY)}>
-                  <Text style={styles.primaryAppleBtnText}>Route to Goal</Text>
+                <TextInput style={styles.mechInput} value={inputX} onChangeText={setInputX} placeholder="X" />
+                <TextInput style={styles.mechInput} value={inputY} onChangeText={setInputY} placeholder="Y" />
+                <TouchableOpacity style={styles.primaryMechBtn} onPress={() => applyGoalCoordinates(inputX, inputY)}>
+                  <Text style={styles.primaryMechBtnText}>Route to Goal</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryAppleBtn} onPress={() => applyGoalCoordinates(home_cell[0], home_cell[1])}>
-                  <Text style={styles.secondaryAppleBtnText}>Return to Home</Text>
+                <TouchableOpacity style={styles.secondaryMechBtn} onPress={() => applyGoalCoordinates(home_cell[0], home_cell[1])}>
+                  <Text style={styles.secondaryMechBtnText}>Return to Home</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -400,19 +400,19 @@ function RoverDashboard() {
             <View style={styles.controlBlock}>
               <Text style={styles.cardEyebrow}>HOME BASE STATION ({home_cell[0]}, {home_cell[1]})</Text>
               <View style={styles.inlineInputs}>
-                <TextInput style={styles.appleInput} value={homeX} onChangeText={setHomeX} placeholder="HX" />
-                <TextInput style={styles.appleInput} value={homeY} onChangeText={setHomeY} placeholder="HY" />
-                <TouchableOpacity style={styles.secondaryAppleBtn} onPress={() => applyHomeCoordinates(homeX, homeY, false)}>
-                  <Text style={styles.secondaryAppleBtnText}>Set Home</Text>
+                <TextInput style={styles.mechInput} value={homeX} onChangeText={setHomeX} placeholder="HX" />
+                <TextInput style={styles.mechInput} value={homeY} onChangeText={setHomeY} placeholder="HY" />
+                <TouchableOpacity style={styles.secondaryMechBtn} onPress={() => applyHomeCoordinates(homeX, homeY, false)}>
+                  <Text style={styles.secondaryMechBtnText}>Set Home</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryAppleBtn} onPress={() => applyHomeCoordinates(0, 0, true)}>
-                  <Text style={styles.secondaryAppleBtnText}>Use Current Pose</Text>
+                <TouchableOpacity style={styles.secondaryMechBtn} onPress={() => applyHomeCoordinates(0, 0, true)}>
+                  <Text style={styles.secondaryMechBtnText}>Use Current Pose</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.indigoAppleBtn}
+                  style={styles.indigoMechBtn}
                   onPress={() => postAPI("/override", { autonomous_enabled: true, linear_v: 0, angular_w: 0, reset_sim: true })}
                 >
-                  <Text style={styles.primaryAppleBtnText}>Deploy from Home</Text>
+                  <Text style={styles.primaryMechBtnText}>Deploy from Home</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -435,7 +435,7 @@ function RoverDashboard() {
           </View>
         </View>
 
-        {/* 4 Apple Minimalist KPI Metric Cards */}
+        {/* 4 MECH-MINDS UI KPI Metric Cards */}
         <View style={styles.kpiRow}>
           <View style={styles.kpiCard}>
             <Text style={styles.kpiLabel}>SPATIAL COORDINATES</Text>
@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
   dualControlRow: { flexDirection: "row", flexWrap: "wrap", gap: 20, justifyContent: "space-between" },
   controlBlock: { flex: 1, minWidth: 300 },
   inlineInputs: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" },
-  appleInput: {
+  mechInput: {
     width: 52,
     backgroundColor: "#F2F2F7",
     color: "#1D1D1F",
@@ -620,11 +620,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 10,
   },
-  primaryAppleBtn: { backgroundColor: "#0071E3", paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
-  indigoAppleBtn: { backgroundColor: "#5856D6", paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
-  primaryAppleBtnText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
-  secondaryAppleBtn: { backgroundColor: "#F2F2F7", paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10 },
-  secondaryAppleBtnText: { color: "#1D1D1F", fontSize: 12, fontWeight: "600" },
+  primaryMechBtn: { backgroundColor: "#0071E3", paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  indigoMechBtn: { backgroundColor: "#5856D6", paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  primaryMechBtnText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  secondaryMechBtn: { backgroundColor: "#F2F2F7", paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10 },
+  secondaryMechBtnText: { color: "#1D1D1F", fontSize: 12, fontWeight: "600" },
   presetPillRow: { flexDirection: "row", gap: 8, marginTop: 14, flexWrap: "wrap" },
   sectorPill: { flex: 1, minWidth: 150, backgroundColor: "#F5F5F7", paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, alignItems: "center" },
   sectorPillText: { color: "#0071E3", fontSize: 12, fontWeight: "600" },
