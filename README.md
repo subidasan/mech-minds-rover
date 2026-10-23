@@ -35,6 +35,7 @@ An edge-computing autonomous 4WD disaster reconnaissance rover and physics-synch
 ---
 
 ## Quick Start Commands
-- **Terminal 1 (Edge AI Engine :8000)**: cd edge_engine && source ~/.rover_venv_311/bin/activate && export SIM_MODE=true && uvicorn main_rover_service:app --host 0.0.0.0 --port 8000
-- **Terminal 2 (MECH-MINDS UI :8081)**: cd mobile_dashboard && node ./node_modules/expo/bin/cli start --web --clear
-- **Terminal 3 (Gazebo 3D Sim & Bridge)**: cd simulation && export GZ_IP=127.0.0.1 && export LIBGL_ALWAYS_SOFTWARE=1 && gz sim -r rover_world.sdf & python3 gazebo_bridge.py
+- **Terminal 1 (Edge AI Engine :8000)**: `cd edge_engine && source ~/.rover_venv_311/bin/activate && export SIM_MODE=true && uvicorn main_rover_service:app --host 0.0.0.0 --port 8000`
+- **Terminal 2 (Node.js Gateway :4000)**: `cd core_gateway && node server.js`
+- **Terminal 3 (MECH-MINDS UI :8081)**: `cd mobile_dashboard && node ./node_modules/expo/bin/cli start --web --clear`
+- **Terminal 4 (Gazebo 3D Sim & Bridge)**: `cd simulation && export GZ_IP=127.0.0.1 && export LIBGL_ALWAYS_SOFTWARE=1 && gz sim -r rover_world.sdf & python3 gazebo_bridge.py`
