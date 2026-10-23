@@ -2,12 +2,14 @@
 
 ## 1. Gazebo 3D Digital Twin Architecture (simulation/)
 - **Custom CAD Chassis (rover_chassis.stl)**: Designed in Autodesk Fusion and imported into rover_world.sdf with zero-sink kinematic ground and ramp elevation synchronization.
-- **Multi-Hazard Obstacle Gauntlet**: Contains 16 obstacle zones and 3 elevated traversable ramps (ramp_alpha, ramp_bravo, ramp_charlie).
-- **Real-Time Kinematic Bridge (gazebo_bridge.py)**: Reads velocity, pose, and ramp pitch states from FastAPI (:8000/status) at 33Hz and updates Gazebo via /world/mech_minds_arena/set_pose.
+- **Hard-Mode Multi-Hazard Gauntlet**: Contains 16 dense obstacle zones and 3 elevated traversable ramps (ramp_alpha, ramp_bravo, ramp_charlie).
+- **Real-Time Kinematic Bridge (gazebo_bridge.py)**: Reads velocity, pose, custom Home Base resets, and ramp pitch states from FastAPI (:8000/status) at 33Hz and updates Gazebo via /world/mech_minds_arena/set_pose.
 
-## 2. Multi-Hazard Perception & Lifelong Mapping (edge_engine/)
+## 2. Lifelong AI Hazard Memory & Multi-Disaster Autonomy (edge_engine/)
+- **Persistent Spatial Memory (main_rover_service.py)**: Records close-range hazard encounters into an online memory buffer that survives mission resets, permanently penalizing high-risk coordinates in the global A* costmap.
 - **Multi-Class Vision Segmentation (perception_gstreamer.py)**: Segments structural debris, bio-chemical spills, radiation zones, and traversable ramps from first-person camera frames using HSV contour masks and focal-length depth estimation.
-- **Log-Odds Occupancy Grid (vslam_occupancy.py)**: Raycasts free corridors and applies class-specific safety inflation buffers around detected hazards while keeping ramps traversable for the 8-connected A* planner (pathfinding_nav.py).
+- **Log-Odds Occupancy Grid & Anti-Stuck Guard (vslam_occupancy.py)**: Raycasts free corridors, applies class-specific safety inflation buffers around detected hazards, and guarantees a clear 3x3 rover footprint so A* never deadlocks in tight choke points.
+- **Dynamic Anomaly Spawner & Cleanup**: Allows live injection and instant clearing of unmapped hazards ahead of the rover to validate reactive obstacle avoidance.
 
 ## 3. Simulation vs. Physical Hardware Transition
 

@@ -30,7 +30,8 @@ function RoverDashboard() {
   const [inputY, setInputY] = useState("54");
   const [homeX, setHomeX] = useState("30");
   const [homeY, setHomeY] = useState("6");
-  const [clickMode, setClickMode] = useState("GOAL"); // "GOAL" or "HOME"
+  const [clickMode, setClickMode] = useState("GOAL");
+  const [selectedHazard, setSelectedHazard] = useState("BIOCHEM");
 
   useEffect(() => {
     let isMounted = true;
@@ -98,6 +99,18 @@ function RoverDashboard() {
     postAPI("/home", { home_x: clampedX, home_y: clampedY, use_current_pose: false });
   };
 
+  const handleCameraClick = (evt) => {
+    const nativeEvt = evt.nativeEvent || evt;
+    if (evt.currentTarget && evt.currentTarget.getBoundingClientRect) {
+      const rect = evt.currentTarget.getBoundingClientRect();
+      const clickX = (nativeEvt.clientX || 0) - rect.left;
+      const clickY = (nativeEvt.clientY || 0) - rect.top;
+      const u = Math.max(0.02, Math.min(0.98, clickX / rect.width));
+      const v = Math.max(0.02, Math.min(0.98, clickY / rect.height));
+      postAPI("/scenario", { spawn_anomaly_kind: selectedHazard, cam_u: u, cam_v: v });
+    }
+  };
+
   const handleMapClick = (evt) => {
     const nativeEvt = evt.nativeEvent || evt;
     let clickX = nativeEvt.offsetX ?? nativeEvt.locationX;
@@ -115,6 +128,8 @@ function RoverDashboard() {
       if (clickMode === "HOME") {
         applyHomeCoordinates(gx, gy, false);
         setClickMode("GOAL");
+      } else if (clickMode === "HAZARD") {
+        postAPI("/scenario", { spawn_anomaly_kind: selectedHazard, target_x: gx, target_y: gy });
       } else {
         applyGoalCoordinates(gx, gy);
       }
@@ -190,41 +205,55 @@ function RoverDashboard() {
               </View>
             </View>
 
-            <View style={styles.cameraContainer}>
-              {camera_frame ? (
-                <Image
-                  source={{ uri: `data:image/jpeg;base64,${camera_frame}` }}
-                  style={styles.cameraImage}
-                  resizeMode="stretch"
-                />
-              ) : (
-                <View style={styles.cameraEmpty}>
-                  <Text style={styles.emptyText}>Awaiting Optical Stream...</Text>
-                </View>
-              )}
-            </View>
+            <div
+              onClick={handleCameraClick}
+              title="Click anywhere in the camera view to place the selected hazard at that exact spot!"
+              style={{ cursor: "crosshair", width: "100%" }}
+            >
+              <View style={styles.cameraContainer}>
+                {camera_frame ? (
+                  <Image
+                    source={{ uri: `data:image/jpeg;base64,${camera_frame}` }}
+                    style={styles.cameraImage}
+                    resizeMode="stretch"
+                  />
+                ) : (
+                  <View style={styles.cameraEmpty}>
+                    <Text style={styles.emptyText}>Awaiting Optical Stream...</Text>
+                  </View>
+                )}
+              </View>
+            </div>
 
             {/* Dynamic Unmapped Anomaly Spawner (Proves Real-Time Learning in Any Disaster) */}
             <View style={styles.anomalyBar}>
-              <Text style={styles.microLabel}>INJECT UNMAPPED ANOMALY AHEAD:</Text>
+              <Text style={styles.microLabel}>
+                SELECT HAZARD BRUSH ({selectedHazard}) — THEN CLICK ANYWHERE ON CAMERA FEED TO PLACE IT:
+              </Text>
               <View style={styles.anomalyBtnGroup}>
                 <TouchableOpacity
-                  style={[styles.anomalyChip, { borderColor: "#FF3B30" }]}
-                  onPress={() => postAPI("/scenario", { spawn_anomaly_kind: "DEBRIS" })}
+                  style={[styles.anomalyChip, { borderColor: "#FF3B30", backgroundColor: selectedHazard === "DEBRIS" ? "#FFEBEA" : "#FAFAFC" }]}
+                  onPress={() => setSelectedHazard("DEBRIS")}
                 >
-                  <Text style={[styles.anomalyChipText, { color: "#FF3B30" }]}>+ Seismic Debris</Text>
+                  <Text style={[styles.anomalyChipText, { color: "#FF3B30" }]}>● Debris Brush</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.anomalyChip, { borderColor: "#34C759" }]}
-                  onPress={() => postAPI("/scenario", { spawn_anomaly_kind: "BIOCHEM" })}
+                  style={[styles.anomalyChip, { borderColor: "#34C759", backgroundColor: selectedHazard === "BIOCHEM" ? "#E8F8EE" : "#FAFAFC" }]}
+                  onPress={() => setSelectedHazard("BIOCHEM")}
                 >
-                  <Text style={[styles.anomalyChipText, { color: "#248A3D" }]}>+ Bio-Chem Plume</Text>
+                  <Text style={[styles.anomalyChipText, { color: "#248A3D" }]}>● Bio-Chem Brush</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.anomalyChip, { borderColor: "#AF52DE" }]}
-                  onPress={() => postAPI("/scenario", { spawn_anomaly_kind: "RADIATION" })}
+                  style={[styles.anomalyChip, { borderColor: "#AF52DE", backgroundColor: selectedHazard === "RADIATION" ? "#F7ECFC" : "#FAFAFC" }]}
+                  onPress={() => setSelectedHazard("RADIATION")}
                 >
-                  <Text style={[styles.anomalyChipText, { color: "#8944AB" }]}>+ Radiation Pocket</Text>
+                  <Text style={[styles.anomalyChipText, { color: "#8944AB" }]}>● Radiation Brush</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.anomalyChip, { borderColor: "#1D1D1F", backgroundColor: "#1D1D1F" }]}
+                  onPress={() => postAPI("/scenario", { clear_anomalies: true })}
+                >
+                  <Text style={[styles.anomalyChipText, { color: "#FFFFFF" }]}>✕ Clear Added</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -252,6 +281,14 @@ function RoverDashboard() {
                 >
                   <Text style={[styles.modePillText, clickMode === "HOME" && styles.modePillTextActive]}>
                     Click sets Home
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modePill, clickMode === "HAZARD" && { backgroundColor: "#FF3B30" }]}
+                  onPress={() => setClickMode("HAZARD")}
+                >
+                  <Text style={[styles.modePillText, clickMode === "HAZARD" && styles.modePillTextActive]}>
+                    Click adds Hazard
                   </Text>
                 </TouchableOpacity>
               </View>

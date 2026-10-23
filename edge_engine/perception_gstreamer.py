@@ -50,11 +50,26 @@ class EdgePerceptionEngine:
             {"x": 26.0, "y": 41.0, "w": 4.0, "l": 6.0, "h": 0.22, "label": "RAMP_CHARLIE"},
         ]
 
-    def spawn_dynamic_anomaly(self, rover_x, rover_y, rover_yaw, kind="BIOCHEM"):
-        """Spawns an unmapped disaster hazard 2.2m ahead of the rover to test real-time AI adaptation."""
-        spawn_dist_cells = 11.0
-        sx = float(np.clip(round(rover_x + spawn_dist_cells * math.cos(rover_yaw) + random.uniform(-2.0, 2.0)), 4.0, 55.0))
-        sy = float(np.clip(round(rover_y + spawn_dist_cells * math.sin(rover_yaw) + random.uniform(-2.0, 2.0)), 4.0, 55.0))
+    def spawn_dynamic_anomaly(self, rover_x, rover_y, rover_yaw, kind="BIOCHEM", cam_u=None, cam_v=None, target_x=None, target_y=None):
+        if target_x is not None and target_y is not None:
+            sx = float(np.clip(round(float(target_x), 1), 3.0, 56.0))
+            sy = float(np.clip(round(float(target_y), 1), 3.0, 56.0))
+        elif cam_u is not None and cam_v is not None:
+            # Raycast 2D camera click (cam_u, cam_v in 0..1 normalized coords) into 3D world ground plane
+            u_norm = float(np.clip(cam_u, 0.05, 0.95))
+            v_norm = float(np.clip(cam_v, 0.05, 0.95))
+            bearing_offset = (0.5 - u_norm) * self.fov
+            # Map vertical click position to ground distance (top/horizon = 5.2m away, bottom = 1.2m close)
+            pitch_norm = max(0.08, v_norm - 0.42) if v_norm > 0.42 else 0.08 + v_norm * 0.25
+            dist_m = float(np.clip(0.65 / pitch_norm, 1.2, 5.2))
+            dist_cells = dist_m / 0.20
+            world_angle = rover_yaw + bearing_offset
+            sx = float(np.clip(round(rover_x + dist_cells * math.cos(world_angle), 1), 3.0, 56.0))
+            sy = float(np.clip(round(rover_y + dist_cells * math.sin(world_angle), 1), 3.0, 56.0))
+        else:
+            spawn_dist_cells = 11.0
+            sx = float(np.clip(round(rover_x + spawn_dist_cells * math.cos(rover_yaw), 1), 4.0, 55.0))
+            sy = float(np.clip(round(rover_y + spawn_dist_cells * math.sin(rover_yaw), 1), 4.0, 55.0))
         new_obs = {"x": sx, "y": sy, "kind": kind}
         self.world_obstacles.append(new_obs)
         return new_obs

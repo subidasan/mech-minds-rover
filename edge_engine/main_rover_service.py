@@ -43,6 +43,7 @@ rover_state = {
     "learned_hazard_zones": [],
     "learned_class_counts": {"DEBRIS": 0, "BIOCHEM": 0, "RADIATION": 0},
     "adaptation_score": 84,
+    "stuck_ticks": 0,
     "mission_log": [
         {"time": time.strftime("%H:%M:%S"), "event": "NEURAL SLAM: Multi-Disaster Classifier Ready (Seismic, Bio-Chem, Radiation)"}
     ],
@@ -75,6 +76,11 @@ class HomePayload(BaseModel):
 class ScenarioPayload(BaseModel):
     scenario: str = "EARTHQUAKE_COLLAPSE"
     spawn_anomaly_kind: str = ""
+    clear_anomalies: bool = False
+    cam_u: float = -1.0
+    cam_v: float = -1.0
+    target_x: float = -1.0
+    target_y: float = -1.0
 
 
 class ManualOverridePayload(BaseModel):
@@ -139,29 +145,52 @@ async def autonomous_control_loop():
                         f"AI LEARNED [{kind}]: Mapped {det['label']} at ({lx},{ly}) -> Adapted safety perimeter"
                     )
 
-        # Apply learned hazard radii to global A* occupancy grid
+        # Apply learned hazard radii to global A* occupancy grid (keep compact pad=1 so corridors never seal shut)
         for lz in rover_state["learned_hazard_zones"]:
-            lx, ly, kind = lz["x"], lz["y"], lz["kind"]
-            pad = 2 if kind in ("BIOCHEM", "RADIATION") else 1
-            for dx in range(-pad, pad + 1):
-                for dy in range(-pad, pad + 1):
+            lx, ly = lz["x"], lz["y"]
+            for dx in range(-1, 2):
+                for dy in range(-1, 2):
                     if 0 <= lx + dx < 60 and 0 <= ly + dy < 60:
                         binary_grid[ly + dy, lx + dx] = 1
 
+        # CRITICAL ANTI-STUCK GUARD: Always guarantee rover's immediate 3x3 cell footprint & goal are free space (0)
+        # so A* never gets trapped inside an inflated hazard boundary!
+        rx_i, ry_i = pose["x"], pose["y"]
+        gx_i, gy_i = rover_state["goal_cell"][0], rover_state["goal_cell"][1]
+        for dx in range(-1, 2):
+            for dy in range(-1, 2):
+                if 0 <= rx_i + dx < 60 and 0 <= ry_i + dy < 60:
+                    binary_grid[ry_i + dy, rx_i + dx] = 0
+                if 0 <= gx_i + dx < 60 and 0 <= gy_i + dy < 60:
+                    binary_grid[gy_i + dy, gx_i + dx] = 0
+
         global_path = navigator.a_star_search(
-            binary_grid, (pose["x"], pose["y"]), tuple(rover_state["goal_cell"])
+            binary_grid, (rx_i, ry_i), (gx_i, gy_i)
         )
+
+        # Fallback direct line if all corridors are temporarily blocked
+        if not global_path and not rover_state["goal_reached"]:
+            global_path = [(rx_i, ry_i), (gx_i, gy_i)]
 
         if rover_state["autonomous_enabled"]:
             v_cmd, w_cmd, lookahead, reached = navigator.potential_fields_control(
                 pose, global_path, binary_grid, rover_state["goal_cell"]
             )
+            # Anti-Deadlock Recovery: If rover is not at goal but velocity drops near zero, apply forward escape impulse
+            if not reached and abs(v_cmd) < 0.08:
+                rover_state["stuck_ticks"] += 1
+                if rover_state["stuck_ticks"] > 6:
+                    v_cmd = 0.55
+                    w_cmd = 0.65 if (int(now * 2) % 2 == 0) else -0.65
+            else:
+                rover_state["stuck_ticks"] = 0
+
             rover_state["linear_v"] = v_cmd
             rover_state["angular_w"] = w_cmd
             if reached and not rover_state["goal_reached"]:
                 add_mission_log(
-                    f"goal_{rover_state['goal_cell'][0]}_{rover_state['goal_cell'][1]}_{int(now)//5}",
-                    f"TARGET REACHED: Arrived at ({rover_state['goal_cell'][0]}, {rover_state['goal_cell'][1]})"
+                    f"goal_{gx_i}_{gy_i}_{int(now)//5}",
+                    f"TARGET REACHED: Arrived at ({gx_i}, {gy_i})"
                 )
             rover_state["goal_reached"] = reached
         else:
@@ -291,10 +320,26 @@ async def set_home_position(payload: HomePayload):
 
 @app.post("/scenario")
 async def switch_disaster_scenario(payload: ScenarioPayload):
+    if payload.clear_anomalies:
+        perception.load_scenario(perception.current_scenario)
+        slam_mapper.log_odds.fill(0.0)
+        rover_state["learned_hazard_zones"] = []
+        rover_state["learned_class_counts"] = {"DEBRIS": 0, "BIOCHEM": 0, "RADIATION": 0}
+        rover_state["adaptation_score"] = 84
+        add_mission_log(
+            f"clear_{int(time.time())}",
+            "ANOMALIES CLEARED: All spawned Bio-Chem/Rad hazards removed & occupancy grid refreshed"
+        )
+        return {"status": "ANOMALIES_CLEARED"}
+
     if payload.spawn_anomaly_kind:
         pose = slam_mapper.get_pose_state()
+        cu = payload.cam_u if payload.cam_u >= 0.0 else None
+        cv = payload.cam_v if payload.cam_v >= 0.0 else None
+        tx = payload.target_x if payload.target_x >= 0.0 else None
+        ty = payload.target_y if payload.target_y >= 0.0 else None
         spawned = perception.spawn_dynamic_anomaly(
-            pose["x_float"], pose["y_float"], pose["yaw"], payload.spawn_anomaly_kind
+            pose["x_float"], pose["y_float"], pose["yaw"], payload.spawn_anomaly_kind, cu, cv, tx, ty
         )
         add_mission_log(
             f"spawn_{spawned['x']}_{spawned['y']}_{int(time.time())}",
@@ -305,6 +350,7 @@ async def switch_disaster_scenario(payload: ScenarioPayload):
     perception.load_scenario(payload.scenario)
     slam_mapper.log_odds.fill(0.0)
     rover_state["learned_hazard_zones"] = []
+    rover_state["learned_class_counts"] = {"DEBRIS": 0, "BIOCHEM": 0, "RADIATION": 0}
     add_mission_log(
         f"scen_{payload.scenario}_{int(time.time())}",
         f"ENVIRONMENT SWITCHED: Loaded {payload.scenario} hazard profile"
@@ -316,7 +362,7 @@ async def switch_disaster_scenario(payload: ScenarioPayload):
 async def manual_override(payload: ManualOverridePayload):
     if payload.reset_sim:
         hx, hy = rover_state["home_cell"]
-        slam_mapper.reset_map_and_pose(float(hx), float(hy), 1.5708, clear_map=False)
+        slam_mapper.reset_map_and_pose(float(hx), float(hy), 1.5708, clear_map=True)
         rover_state["reset_coords"] = [float(hx), float(hy)]
         rover_state["reset_flag"] = True
         rover_state["goal_reached"] = False
