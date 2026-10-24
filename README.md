@@ -6,7 +6,7 @@ An edge-computing autonomous 4WD disaster reconnaissance rover and physics-synch
 ---
 
 ## Core Technical Innovations
-1. **Lifelong AI Hazard-Memory Mapping (Adaptive Experience Learning)**:
+1. **Adaptive AI Hazard-Memory Mapping (Adaptive Experience Learning)**:
    - Unlike standard stateless planners that forget obstacles after a reset, the rover encodes newly encountered hazards into a persistent spatial memory layer.
    - On subsequent deployments from Home Base, the global A* planner automatically routes around previously learned trap zones and hazard perimeters.
 2. **Multi-Disaster Vision Segmentation (Seismic, Bio-Chemical, Radiation, Submerged Floods & Overpass Ramps)**:
@@ -43,7 +43,7 @@ An edge-computing autonomous 4WD disaster reconnaissance rover and physics-synch
 
 ---
 
-## 🧠 Adaptive Spatial Memory & Black-Box Mission Auditing
+##  Adaptive Spatial Memory & Black-Box Mission Auditing
 
 To operate reliably in unpredictable, GPS-denied disaster zones, the MECH-MINDS Rover OS implements three critical field-readiness capabilities:
 
@@ -51,9 +51,9 @@ To operate reliably in unpredictable, GPS-denied disaster zones, the MECH-MINDS 
 * **Log-Odds Occupancy Locking:** As the rover traverses a sector, detected hazards (`DEBRIS`, `BIOCHEM`, `RADIATION`) within sensor range are geo-tagged and locked into a persistent 60x60 log-odds occupancy grid.
 * **Out-of-Sight Rerouting:** Once a hazard is mapped, the rover retains its exact spatial perimeter even after driving past it (when the obstacle falls completely into the camera's blind spot). Subsequent sorties compute instant, collision-free A* trajectories using this retained spatial memory.
 
-### 2. Dynamic Environment Memory Flush (`🧠 Wipe Memory` / `POST /memory/clear`)
+### 2. Dynamic Environment Memory Flush (` Wipe Memory` / `POST /memory/clear`)
 * **Zero-Reboot Terrain Reset:** When redeploying the rover to a new disaster sector or after structural aftershocks reshape the arena, operators can flush stale spatial maps on the fly.
-* **Instant Log-Odds Purge:** Clicking **`🧠 Wipe Memory`** zeroes the V-SLAM log-odds matrix, clears the hazard registry, and resets the AI Adaptation index without rebooting the edge service.
+* **Instant Log-Odds Purge:** Clicking **` Wipe Memory`** zeroes the V-SLAM log-odds matrix, clears the hazard registry, and resets the AI Adaptation index without rebooting the edge service.
 
-### 3. Automated Mission Incident Report (`📄 Export Report` / `GET /report`)
-* **One-Click Black-Box Audit:** Clicking **`📄 Export Report`** downloads a formatted Markdown (`.md`) incident dossier containing the active disaster scenario, rover coordinates, AI adaptation score, geo-tagged hazard coordinates, and full chronological black-box telemetry log.
+### 3. Automated Mission Incident Report (` Export Report` / `GET /report`)
+* **One-Click Black-Box Audit:** Clicking **` Export Report`** downloads a formatted Markdown (`.md`) incident dossier containing the active disaster scenario, rover coordinates, AI adaptation score, geo-tagged hazard coordinates, and full chronological black-box telemetry log.
