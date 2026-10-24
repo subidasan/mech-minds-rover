@@ -41,7 +41,7 @@ rover_state = {
     "reset_flag": False,
     "reset_coords": [30.0, 6.0],
     "learned_hazard_zones": [],
-    "learned_class_counts": {"DEBRIS": 0, "BIOCHEM": 0, "RADIATION": 0},
+    "learned_class_counts": {"DEBRIS": 0, "BIOCHEM": 0, "RADIATION": 0, "FLOOD": 0},
     "adaptation_score": 84,
     "stuck_ticks": 0,
     "mission_log": [
@@ -208,7 +208,7 @@ async def autonomous_control_loop():
         elif active_ramp:
             drive_mode = f"CLIMBING {active_ramp}"
             torque_boost = 1.45
-        elif detections and detections[0].get("kind") in ("BIOCHEM", "RADIATION"):
+        elif detections and detections[0].get("kind") in ("BIOCHEM", "RADIATION", "FLOOD"):
             drive_mode = f"HAZMAT EVASION ({detections[0].get('kind')})"
             torque_boost = 1.25
         elif abs(w_cmd) > 0.35:
@@ -384,3 +384,72 @@ async def update_external_pose(payload: PosePayload):
     slam_mapper.rover_y_float = payload.y_float
     slam_mapper.rover_yaw = payload.yaw
     return {"status": "POSE_SYNCED"}
+
+
+@app.get("/report")
+async def export_mission_report():
+    pose = slam_mapper.get_pose_state()
+    zones = rover_state["learned_hazard_zones"]
+    counts = rover_state["learned_class_counts"]
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    px, py = pose["x"], pose["y"]
+    pz = pose.get("z_elevation", 0.0)
+    hx, hy = rover_state["home_cell"][0], rover_state["home_cell"][1]
+    gx, gy = rover_state["goal_cell"][0], rover_state["goal_cell"][1]
+    score = rover_state["adaptation_score"]
+
+    lines = [
+        "# MECH-MINDS AUTONOMOUS RECONNAISSANCE - MISSION INCIDENT REPORT",
+        f"**Timestamp:** {ts}",
+        f"**Active Disaster Profile:** {perception.current_scenario}",
+        f"**Rover Coordinates:** ({px}, {py}) | Elevation: {pz}m",
+        f"**Home Base Station:** ({hx}, {hy})",
+        f"**Target Sector:** ({gx}, {gy})",
+        f"**AI Adaptation & Safety Rating:** {score}%",
+        "",
+        "## 1. Hazard Inventory Summary",
+        f"- **Structural Debris (DEBRIS):** {counts.get('DEBRIS', 0)} zones",
+        f"- **Bio-Chemical Plumes (BIOCHEM):** {counts.get('BIOCHEM', 0)} zones",
+        f"- **Radiation Pockets (RADIATION):** {counts.get('RADIATION', 0)} zones",
+        f"- **Submerged Flood Zones (FLOOD):** {counts.get('FLOOD', 0)} zones",
+        "",
+        "## 2. Geo-Tagged Hazard Coordinates (Lifelong Memory Log)",
+    ]
+    if not zones:
+        lines.append("- No critical close-range hazards logged in current sortie.")
+    else:
+        for idx, z in enumerate(zones, 1):
+            lines.append(f"{idx}. **[{z['kind']}]** Grid Sector ({z['x']}, {z['y']}) - Perimeter Inflated & Routed")
+    lines.append("")
+    lines.append("## 3. Black-Box Chronological Event Telemetry")
+    for entry in rover_state["mission_log"]:
+        lines.append(f"- `{entry['time']}` - {entry['event']}")
+    report_md = "\n".join(lines)
+    return {
+        "status": "REPORT_GENERATED",
+        "timestamp": ts,
+        "scenario": perception.current_scenario,
+        "safety_score": score,
+        "counts": counts,
+        "hazards": zones,
+        "markdown": report_md
+    }
+
+@app.post("/memory/clear")
+async def clear_spatial_memory():
+    # 1. Wipe the V-SLAM log-odds occupancy matrix while keeping current rover pose
+    slam_mapper.log_odds.fill(0.0)
+    # 2. Clear learned hazard zones, class counters, and reset adaptation score to baseline
+    rover_state["learned_hazard_zones"].clear()
+    rover_state["learned_class_counts"] = {"DEBRIS": 0, "BIOCHEM": 0, "RADIATION": 0, "FLOOD": 0}
+    rover_state["adaptation_score"] = 18.0
+    # 3. Also clear any user-injected temporary anomalies so environment starts fresh
+    if hasattr(perception, "clear_dynamic_hazards"):
+        perception.clear_dynamic_hazards()
+    log_event("SPATIAL MEMORY WIPED: Log-odds grid & hazard registry flushed for new environment")
+    return {
+        "status": "MEMORY_CLEARED",
+        "adaptation_score": rover_state["adaptation_score"],
+        "learned_zones": 0
+    }
+

@@ -6,17 +6,18 @@ An edge-computing autonomous 4WD disaster reconnaissance rover and physics-synch
 ---
 
 ## Core Technical Innovations
-1. **Lifelong AI Hazard-Memory Mapping (Persistent Experience Learning)**:
+1. **Lifelong AI Hazard-Memory Mapping (Adaptive Experience Learning)**:
    - Unlike standard stateless planners that forget obstacles after a reset, the rover encodes newly encountered hazards into a persistent spatial memory layer.
    - On subsequent deployments from Home Base, the global A* planner automatically routes around previously learned trap zones and hazard perimeters.
-2. **Multi-Disaster Vision Segmentation (Seismic, Bio-Chemical, Radiation & Overpass Ramps)**:
+2. **Multi-Disaster Vision Segmentation (Seismic, Bio-Chemical, Radiation, Submerged Floods & Overpass Ramps)**:
    - Real-time 40Hz OpenCV/YOLOv8n perception pipeline classifies four distinct terrain elements directly from camera frames: Structural Debris, Bio-Chemical Plumes, Radiation Zones, and Traversable Overpass Ramps.
    - Dynamically adjusts occupancy grid inflation radii based on threat severity (wider safety perimeters for bio-chemical and radiation pockets while keeping ramps open as elevated shortcuts).
 3. **Real-Time Unmapped Anomaly Injection & Anti-Deadlock Recovery**:
    - Operators can spawn unmapped hazards directly ahead of the moving rover via the MECH-MINDS UI console to verify instantaneous sub-100ms trajectory replanning, footprint clearing, and one-click anomaly cleanup.
 4. **Terrain-Adaptive C++17 PID & Ramp Torque Boost**:
    - Fuses raised-cosine slope pitch estimation with a pybind11 C++17 hardware PID controller, automatically applying a 1.45x PWM torque multiplier when climbing 3D disaster ramps.
-5. **Customizable Home Base & Black-Box Reconnaissance Telemetry**:
+5. **Automated Mission Incident Report Export & Customizable Home Base**:
+   - Generates downloadable Markdown/JSON reconnaissance reports with geo-tagged hazard inventories, timestamps, and AI adaptation metrics.
    - Supports dynamic Home Base coordinate locking anywhere on the 2D V-SLAM grid, one-click Return-to-Home (RTH) routing, and an offline mission event recorder.
 
 ---
@@ -39,3 +40,20 @@ An edge-computing autonomous 4WD disaster reconnaissance rover and physics-synch
 - **Terminal 2 (Node.js Gateway :4000)**: `cd core_gateway && node server.js`
 - **Terminal 3 (MECH-MINDS UI :8081)**: `cd mobile_dashboard && node ./node_modules/expo/bin/cli start --web --clear`
 - **Terminal 4 (Gazebo 3D Sim & Bridge)**: `cd simulation && export GZ_IP=127.0.0.1 && export LIBGL_ALWAYS_SOFTWARE=1 && gz sim -r rover_world.sdf & python3 gazebo_bridge.py`
+
+---
+
+## 🧠 Adaptive Spatial Memory & Black-Box Mission Auditing
+
+To operate reliably in unpredictable, GPS-denied disaster zones, the MECH-MINDS Rover OS implements three critical field-readiness capabilities:
+
+### 1. Blind-Spot Hazard Retention (Adaptive V-SLAM Memory)
+* **Log-Odds Occupancy Locking:** As the rover traverses a sector, detected hazards (`DEBRIS`, `BIOCHEM`, `RADIATION`) within sensor range are geo-tagged and locked into a persistent 60x60 log-odds occupancy grid.
+* **Out-of-Sight Rerouting:** Once a hazard is mapped, the rover retains its exact spatial perimeter even after driving past it (when the obstacle falls completely into the camera's blind spot). Subsequent sorties compute instant, collision-free A* trajectories using this retained spatial memory.
+
+### 2. Dynamic Environment Memory Flush (`🧠 Wipe Memory` / `POST /memory/clear`)
+* **Zero-Reboot Terrain Reset:** When redeploying the rover to a new disaster sector or after structural aftershocks reshape the arena, operators can flush stale spatial maps on the fly.
+* **Instant Log-Odds Purge:** Clicking **`🧠 Wipe Memory`** zeroes the V-SLAM log-odds matrix, clears the hazard registry, and resets the AI Adaptation index without rebooting the edge service.
+
+### 3. Automated Mission Incident Report (`📄 Export Report` / `GET /report`)
+* **One-Click Black-Box Audit:** Clicking **`📄 Export Report`** downloads a formatted Markdown (`.md`) incident dossier containing the active disaster scenario, rover coordinates, AI adaptation score, geo-tagged hazard coordinates, and full chronological black-box telemetry log.

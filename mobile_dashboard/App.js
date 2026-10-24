@@ -99,6 +99,34 @@ function RoverDashboard() {
     postAPI("/home", { home_x: clampedX, home_y: clampedY, use_current_pose: false });
   };
 
+  const handleWipeMemory = async () => {
+    try {
+      await fetch(`${EDGE_DIRECT_API}/memory/clear`, { method: "POST" });
+    } catch (e) {
+      console.log("Memory wipe error:", e);
+    }
+  };
+
+  const handleExportReport = async () => {
+    try {
+      const res = await fetch(`${EDGE_DIRECT_API}/report`);
+      const data = await res.json();
+      if (data && data.markdown && typeof window !== "undefined") {
+        const blob = new Blob([data.markdown], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `MECH_MINDS_INCIDENT_REPORT_${Date.now()}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.log("Report export error:", e);
+    }
+  };
+
   const handleCameraClick = (evt) => {
     const nativeEvt = evt.nativeEvent || evt;
     if (evt.currentTarget && evt.currentTarget.getBoundingClientRect) {
@@ -255,6 +283,18 @@ function RoverDashboard() {
                 >
                   <Text style={[styles.anomalyChipText, { color: "#FFFFFF" }]}>✕ Clear Added</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.anomalyChip, { borderColor: "#007AFF", backgroundColor: "#007AFF" }]}
+                  onPress={handleExportReport}
+                >
+                  <Text style={[styles.anomalyChipText, { color: "#FFFFFF" }]}> Export Report</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.anomalyChip, { borderColor: "#FF9500", backgroundColor: "#FF9500" }]}
+                  onPress={handleWipeMemory}
+                >
+                  <Text style={[styles.anomalyChipText, { color: "#FFFFFF" }]}> Wipe Memory</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -264,7 +304,7 @@ function RoverDashboard() {
             <View style={styles.cardHeader}>
               <View>
                 <Text style={styles.cardEyebrow}>SPATIAL TOPOLOGY & A* ROUTING</Text>
-                <Text style={styles.cardTitle}>Lifelong V-SLAM Map</Text>
+                <Text style={styles.cardTitle}>Adaptive V-SLAM Map</Text>
               </View>
               <View style={styles.mapModeToggle}>
                 <TouchableOpacity
@@ -518,7 +558,7 @@ function RoverDashboard() {
 
           <View style={styles.bentoCard}>
             <Text style={styles.cardEyebrow}>AUTONOMOUS BLACK-BOX TELEMETRY</Text>
-            <Text style={styles.cardTitle}>Lifelong Learning & Recon Log</Text>
+            <Text style={styles.cardTitle}>Adaptive Learning & Recon Log</Text>
             <View style={styles.cleanLogContainer}>
               {(mission_log || []).map((item, idx) => (
                 <View key={idx} style={styles.logRow}>
